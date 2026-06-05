@@ -33,6 +33,26 @@ func main() {
 
 	v1 := r.Group("/api/v1")
 	{
+		v1.POST("/samples", func(c *gin.Context) {
+			var body struct {
+				BatchBusinessID string `json:"batch_business_id" binding:"required"`
+				SampleID        string `json:"sample_id" binding:"required"`
+			}
+			if err := c.ShouldBindJSON(&body); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			data := map[string]any{
+				"batch_business_id": body.BatchBusinessID,
+				"sample_id":         body.SampleID,
+			}
+			if err := pub.Publish(c.Request.Context(), "qc.sample.submitted", data); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "kafka publish failed"})
+				return
+			}
+			c.JSON(http.StatusCreated, gin.H{"status": "published", "event_type": "qc.sample.submitted"})
+		})
+
 		v1.POST("/lab/results", func(c *gin.Context) {
 			var body struct {
 				BatchBusinessID string  `json:"batch_business_id" binding:"required"`
@@ -40,6 +60,7 @@ func main() {
 				CupScore        float64 `json:"cup_score"`
 				Grade           string  `json:"grade"`
 				Tester          string  `json:"tester"`
+				Defects         float64 `json:"defects"`
 			}
 			if err := c.ShouldBindJSON(&body); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -51,6 +72,9 @@ func main() {
 				"cup_score":         body.CupScore,
 				"grade":             body.Grade,
 				"tester":            body.Tester,
+			}
+			if body.Defects > 0 {
+				data["defects"] = body.Defects
 			}
 			if err := pub.Publish(c.Request.Context(), "qc.lab.result_recorded", data); err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "kafka publish failed"})
