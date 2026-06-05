@@ -9,7 +9,7 @@ import (
 	"iag-quality-control/backend/internal/auditlog"
 )
 
-func RequestAudit(store *auditlog.MemoryStore) gin.HandlerFunc {
+func RequestAudit(store *auditlog.Store) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		c.Next()
