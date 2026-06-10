@@ -10,20 +10,28 @@ import (
 	"iag-quality-control/backend/internal/clients"
 	"iag-quality-control/backend/internal/config"
 	"iag-quality-control/backend/internal/events"
+	"iag-quality-control/backend/internal/outbox"
 	"iag-quality-control/backend/internal/store"
 )
 
 type QC struct {
-	Cfg   config.Config
-	Store *store.Store
-	Pub   *events.Publisher
-	SCM   *clients.SCM
-	MES   *clients.MES
+	Cfg    config.Config
+	Store  *store.Store
+	Pub    *events.Publisher
+	Outbox *outbox.Store
+	SCM    *clients.SCM
+	MES    *clients.MES
 }
 
+// publish emits a domain event. When Kafka is enabled it durably enqueues to
+// the outbox (the relay drains it to Kafka with retry); when Kafka is disabled
+// (e.g. local dev) it falls through to the no-op publisher.
 func (h *QC) publish(ctx context.Context, eventType string, data map[string]any) error {
 	if h.Cfg.KafkaRequired && !h.Pub.Enabled() {
 		return events.ErrDisabled
+	}
+	if h.Outbox != nil && h.Pub.Enabled() {
+		return h.Outbox.Enqueue(ctx, eventType, data)
 	}
 	return h.Pub.Publish(ctx, eventType, data)
 }

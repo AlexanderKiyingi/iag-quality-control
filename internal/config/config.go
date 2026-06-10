@@ -16,7 +16,10 @@ type Config struct {
 	DatabaseURL   string
 	AutoMigrate   bool
 
+	AuthMode            string
 	JWTIssuer           string
+	JWKSURL             string
+	Audience            string
 	ServiceClientID     string
 	ServiceClientSecret string
 	AuthTokenURL        string
@@ -36,13 +39,20 @@ type Config struct {
 func Load() (Config, error) {
 	_ = godotenv.Load()
 	env := strings.ToLower(strings.TrimSpace(getenv("ENVIRONMENT", "development")))
+	authMode := strings.ToLower(strings.TrimSpace(getenv("AUTH_MODE", "jwt")))
+	if authMode != "jwt" {
+		return Config{}, fmt.Errorf("AUTH_MODE must be jwt (got %q)", authMode)
+	}
 	c := Config{
 		Environment:   env,
 		Port:          getenv("PORT", "4004"),
 		ServiceName:   getenv("SERVICE_NAME", "quality-control"),
 		DatabaseURL:   strings.TrimSpace(os.Getenv("DATABASE_URL")),
 		AutoMigrate:   getenv("AUTO_MIGRATE", "true") != "false",
+		AuthMode:      authMode,
 		JWTIssuer:     getenv("JWT_ISSUER", "http://localhost:3001"),
+		JWKSURL:       getenv("JWKS_URL", "http://localhost:3001/.well-known/jwks.json"),
+		Audience:      getenv("AUDIENCE", "iag.quality"),
 		ServiceClientID:     getenv("SERVICE_CLIENT_ID", "iag-quality-control"),
 		ServiceClientSecret: os.Getenv("SERVICE_CLIENT_SECRET"),
 		KafkaBrokers:  splitCSV(getenv("KAFKA_BROKERS", "")),
@@ -61,11 +71,26 @@ func Load() (Config, error) {
 	if c.AuthTokenURL == "" {
 		c.AuthTokenURL = strings.TrimRight(c.JWTIssuer, "/") + "/oauth/token"
 	}
+	if c.IsProduction() {
+		if c.ServiceClientSecret == "" {
+			return c, fmt.Errorf("SERVICE_CLIENT_SECRET is required in production")
+		}
+		if len(c.ServiceClientSecret) < 16 {
+			return c, fmt.Errorf("SERVICE_CLIENT_SECRET must be at least 16 characters in production")
+		}
+	}
 	return c, nil
 }
 
 func (c Config) IsProduction() bool {
 	return c.Environment == "production" || c.Environment == "prod"
+}
+
+// StrictRBAC enables fail-closed permission checks in production. In
+// non-production environments missing claims fall through (open) to keep
+// local dev and integration tests workable.
+func (c Config) StrictRBAC() bool {
+	return c.IsProduction()
 }
 
 func getenv(k, d string) string {
