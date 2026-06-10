@@ -1,0 +1,226 @@
+openapi: 3.0.3
+info:
+  title: iag-quality-control
+  version: 1.0.0
+  description: CUPPA LIMS — samples, tests, certification, CoA, compliance
+servers:
+  - url: http://localhost:4004
+  - url: http://localhost:8080/api/v1/quality-control
+paths:
+  /health:
+    get:
+      summary: Liveness
+  /ready:
+    get:
+      summary: Readiness
+  /api/v1/dashboard/summary:
+    get:
+      summary: Lab KPIs
+  /api/v1/search:
+    get:
+      summary: Global search across samples, CoA, instruments, certifications
+      parameters:
+        - in: query
+          name: q
+          required: true
+          schema: { type: string, minLength: 2 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20 }
+  /api/v1/calendar:
+    get:
+      summary: Certification, calibration, and audit calendar
+      parameters:
+        - in: query
+          name: from
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          schema: { type: string, format: date }
+  /api/v1/analytics/spc:
+    get:
+      summary: SPC control chart data
+      parameters:
+        - in: query
+          name: metric
+          schema: { type: string, enum: [moisture, cup_score], default: moisture }
+        - in: query
+          name: batch_business_id
+          schema: { type: string }
+        - in: query
+          name: days
+          schema: { type: integer, default: 30 }
+  /api/v1/reports/day-summary:
+    get:
+      summary: Day report
+      parameters:
+        - in: query
+          name: date
+          schema: { type: string, format: date }
+  /api/v1/reports/day-summary/pdf:
+    get:
+      summary: Day report PDF
+      parameters:
+        - in: query
+          name: date
+          schema: { type: string, format: date }
+  /api/v1/reports/trends:
+    get:
+      summary: Daily trend points
+      parameters:
+        - in: query
+          name: days
+          schema: { type: integer, default: 7 }
+  /api/v1/reports/weekly-summary:
+    get:
+      summary: Rolling 7-day rollup
+  /api/v1/reports/export:
+    get:
+      summary: CSV export
+      parameters:
+        - in: query
+          name: type
+          required: true
+          schema: { type: string, enum: [samples] }
+  /api/v1/batches:
+    get:
+      summary: List batches from supply-chain (SCM proxy)
+  /api/v1/batches/{businessId}:
+    get:
+      summary: Batch detail from SCM
+  /api/v1/batches/{businessId}/pipeline:
+    get:
+      summary: SCM batch with QC lab summary, samples, and MES production context
+  /api/v1/export-lots:
+    get:
+      summary: List export lots from SCM
+  /api/v1/export-lots/{businessId}:
+    get:
+      summary: Export lot detail with QC CoA if present
+  /api/v1/farmers:
+    get:
+      summary: List farmers from SCM
+  /api/v1/farmers/{businessId}:
+    get:
+      summary: Farmer detail from SCM
+  /api/v1/technicians:
+    get:
+      summary: List lab technicians
+    post:
+      summary: Upsert lab technician
+  /api/v1/technicians/{id}:
+    get:
+      summary: Get technician
+  /api/v1/physical-tests:
+    get:
+      summary: Lab-wide physical test list
+  /api/v1/chemical-tests:
+    get:
+      summary: Lab-wide chemical test list
+  /api/v1/cupping-sessions:
+    get:
+      summary: Lab-wide cupping session list
+  /api/v1/queues/instrument:
+    get:
+      summary: Physical instrument work queue
+  /api/v1/queues/hplc:
+    get:
+      summary: HPLC / chemical work queue
+  /api/v1/queues/cupping:
+    get:
+      summary: Pending cupping queue
+  /api/v1/external-audits:
+    get:
+      summary: External certification audit schedule
+    post:
+      summary: Upsert external audit
+  /api/v1/reports/audit-pack:
+    get:
+      summary: Bundled compliance audit pack
+  /api/v1/samples:
+    get:
+      summary: List samples
+    post:
+      summary: Register sample
+  /api/v1/samples/{id}/detail:
+    get:
+      summary: Sample with tests, cupping, custody, lab summary
+  /api/v1/samples/{id}/custody:
+    get:
+      summary: Chain-of-custody log
+    post:
+      summary: Record custody event
+  /api/v1/samples/{id}/cupping:
+    get:
+      summary: Cupping sessions for sample
+  /api/v1/samples/{id}/label:
+    get:
+      summary: Sample barcode label
+      parameters:
+        - in: query
+          name: format
+          schema: { type: string, enum: [json, zpl, svg], default: json }
+  /api/v1/samples/{id}/cupping/pdf:
+    get:
+      summary: SCA cupping form PDF
+  /api/v1/samples/{id}:
+    get:
+      summary: Get sample
+    patch:
+      summary: Update sample status
+  /api/v1/samples/{id}/physical-tests:
+    post:
+      summary: Record physical test
+  /api/v1/samples/{id}/chemical-tests:
+    post:
+      summary: Record chemical test
+  /api/v1/samples/{id}/cupping:
+    post:
+      summary: Record SCA cupping
+  /api/v1/lab/results:
+    post:
+      summary: Upsert batch lab summary
+  /api/v1/batches/{batchId}/lab:
+    get:
+      summary: Batch lab panel
+  /api/v1/certification/pending:
+    get:
+      summary: Pending certification requests
+  /api/v1/certification/requests:
+    post:
+      summary: Start certification workflow
+  /api/v1/certification/requests/{id}:
+    get:
+      summary: Certification detail
+  /api/v1/certification/requests/{id}/approve:
+    post:
+      summary: Approve or reject stage
+  /api/v1/coa:
+    get:
+      summary: List CoAs
+    post:
+      summary: Issue CoA
+  /api/v1/coa/{coaNumber}/pdf:
+    get:
+      summary: CoA PDF document
+  /api/v1/coa/{coaNumber}:
+    get:
+      summary: Single CoA lookup by number
+  /api/v1/instruments:
+    get:
+      summary: List instruments
+    post:
+      summary: Upsert instrument
+  /api/v1/instruments/sync:
+    post:
+      summary: Sync instrument telemetry from MES
+  /api/v1/compliance/logs:
+    get:
+      summary: List compliance logs
+    post:
+      summary: Create compliance log
+  /api/v1/compliance/capas:
+    get:
+      summary: List CAPAs
+    post:
+      summary: Upsert CAPA

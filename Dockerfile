@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 # Monorepo: docker build -f services/operations/quality-control/Dockerfile --target monorepo .
 
-FROM golang:1.23-alpine AS build
+FROM golang:1.25-alpine AS build
 RUN apk add --no-cache git ca-certificates
 WORKDIR /src/services/operations/quality-control
 COPY services/operations/quality-control/go.mod services/operations/quality-control/go.sum ./

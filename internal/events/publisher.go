@@ -3,11 +3,15 @@ package events
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/segmentio/kafka-go"
 )
+
+var ErrDisabled = errors.New("kafka publisher disabled")
 
 const Source = "iag-quality-control"
 
@@ -35,6 +39,10 @@ func NewPublisher(brokers []string, topic, clientID string) *Publisher {
 	}
 }
 
+func (p *Publisher) Enabled() bool {
+	return p.enabled
+}
+
 func (p *Publisher) Close() error {
 	if p.writer == nil {
 		return nil
@@ -53,7 +61,10 @@ func (p *Publisher) Publish(ctx context.Context, eventType string, data map[stri
 		"source": Source,
 		"data":   data,
 	}
-	raw, _ := json.Marshal(env)
+	raw, err := json.Marshal(env)
+	if err != nil {
+		return fmt.Errorf("marshal event: %w", err)
+	}
 	key := ""
 	if bid, ok := data["batch_business_id"].(string); ok {
 		key = bid
