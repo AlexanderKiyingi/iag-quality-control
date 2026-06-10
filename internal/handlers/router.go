@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 
 	"iag-quality-control/backend/internal/auditlog"
 	"iag-quality-control/backend/internal/clients"
@@ -32,6 +33,7 @@ type RouterDeps struct {
 func NewRouter(deps RouterDeps) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
+	r.Use(otelgin.Middleware(deps.Cfg.ServiceName))
 	r.Use(gin.Recovery())
 	if deps.PlatformAuth != nil {
 		r.Use(deps.PlatformAuth.AttachPrincipal())
