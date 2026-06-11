@@ -3,6 +3,8 @@ package handlers
 import (
 	"errors"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -67,6 +69,17 @@ func (h *QC) PostCupping(c *gin.Context) {
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "kafka publish failed"})
 		return
+	}
+	// A failing/low cupping grade ("Reject", i.e. SCA score < 75) is a genuine
+	// quality failure worth notifying the QC manager about.
+	if strings.EqualFold(summary.Grade, "Reject") {
+		score := "n/a"
+		if summary.CupScore != nil {
+			score = strconv.FormatFloat(*summary.CupScore, 'f', -1, 64)
+		}
+		h.notifyAlert(c.Request.Context(), "qc.alert",
+			"Cupping failed for batch "+summary.BatchBusinessID,
+			"Batch "+summary.BatchBusinessID+" graded "+summary.Grade+" (SCA score "+score+").")
 	}
 	c.JSON(http.StatusCreated, gin.H{"session": session, "summary": summary})
 }

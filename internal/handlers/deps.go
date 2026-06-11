@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"os"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -34,6 +36,28 @@ func (h *QC) publish(ctx context.Context, eventType string, data map[string]any)
 		return h.Outbox.Enqueue(ctx, eventType, data)
 	}
 	return h.Pub.Publish(ctx, eventType, data)
+}
+
+// notifyAlert emits qc.alert.raised (consumed by the central notifications
+// service off the iag.quality topic) using the shared
+// {channel,recipient,templateId,variables} envelope. It is a best-effort,
+// non-blocking side channel: it never fails the domain request and is a no-op
+// when no NOTIFY_DEFAULT_RECIPIENT is configured.
+func (h *QC) notifyAlert(ctx context.Context, templateID, title, body string) {
+	recipient := strings.TrimSpace(os.Getenv("NOTIFY_DEFAULT_RECIPIENT"))
+	if recipient == "" {
+		return
+	}
+	channel := strings.TrimSpace(os.Getenv("NOTIFY_CHANNEL"))
+	if channel == "" {
+		channel = "email"
+	}
+	_ = h.publish(ctx, "qc.alert.raised", map[string]any{
+		"channel":    channel,
+		"recipient":  recipient,
+		"templateId": templateID,
+		"variables":  map[string]any{"Title": title, "Body": body},
+	})
 }
 
 func (h *QC) validateBatch(ctx context.Context, batchID string) error {
