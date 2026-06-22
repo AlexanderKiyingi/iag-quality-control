@@ -29,7 +29,7 @@ func (h *QC) PostCupping(c *gin.Context) {
 		DefectCat2 int      `json:"defect_cat2"`
 		Notes      string   `json:"notes"`
 	}
-	if err := c.ShouldBindJSON(&body); err != nil {
+	if err := bindJSONCoerced(c, &body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

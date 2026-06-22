@@ -44,7 +44,7 @@ func (h *QC) UpsertInstrument(c *gin.Context) {
 		Samples24h     int     `json:"samples_24h"`
 		MESAssetTag    string  `json:"mes_asset_tag"`
 	}
-	if err := c.ShouldBindJSON(&body); err != nil {
+	if err := bindJSONCoerced(c, &body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

@@ -83,7 +83,7 @@ func (h *QC) PostLabResult(c *gin.Context) {
 		Defects         float64 `json:"defects"`
 		WaterActivity   float64 `json:"water_activity"`
 	}
-	if err := c.ShouldBindJSON(&body); err != nil {
+	if err := bindJSONCoerced(c, &body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

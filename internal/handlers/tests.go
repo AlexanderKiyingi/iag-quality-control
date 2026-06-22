@@ -24,7 +24,7 @@ func (h *QC) PostPhysicalTest(c *gin.Context) {
 		DefectCat2    int      `json:"defect_cat2"`
 		Status        string   `json:"status"`
 	}
-	if err := c.ShouldBindJSON(&body); err != nil {
+	if err := bindJSONCoerced(c, &body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -90,7 +90,7 @@ func (h *QC) PostChemicalTest(c *gin.Context) {
 		CaffeinePct    *float64 `json:"caffeine_pct"`
 		Status         string   `json:"status"`
 	}
-	if err := c.ShouldBindJSON(&body); err != nil {
+	if err := bindJSONCoerced(c, &body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
