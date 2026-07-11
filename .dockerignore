@@ -1,0 +1,11 @@
+bin/
+.env
+.env.*
+!.env.example
+!.env.production.example
+*.md
+.git
+.github
+.turbo
+**/*_test.go
+**/testdata/
