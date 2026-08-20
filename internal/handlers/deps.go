@@ -3,9 +3,11 @@ package handlers
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 
@@ -46,6 +48,7 @@ func (h *QC) publish(ctx context.Context, eventType string, data map[string]any)
 func (h *QC) notifyAlert(ctx context.Context, templateID, title, body string) {
 	recipient := strings.TrimSpace(os.Getenv("NOTIFY_DEFAULT_RECIPIENT"))
 	if recipient == "" {
+		warnNoNotifyRecipient()
 		return
 	}
 	channel := strings.TrimSpace(os.Getenv("NOTIFY_CHANNEL"))
@@ -128,4 +131,16 @@ func labResultPayload(summary store.BatchLabSummary) map[string]any {
 		data["sample_id"] = summary.LatestSampleID
 	}
 	return data
+}
+
+var notifyRecipientWarnOnce sync.Once
+
+// warnNoNotifyRecipient logs once when an alert is dropped for want of a
+// recipient. Without it an unset NOTIFY_DEFAULT_RECIPIENT is indistinguishable
+// from "no alerts were raised": the emitter returns early, nothing reaches the
+// notifications service, and no error appears anywhere.
+func warnNoNotifyRecipient() {
+	notifyRecipientWarnOnce.Do(func() {
+		slog.Warn("qc alert dropped: no recipient and NOTIFY_DEFAULT_RECIPIENT is unset; qc.alert.raised events will not be emitted")
+	})
 }
