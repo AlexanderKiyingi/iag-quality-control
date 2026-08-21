@@ -119,5 +119,19 @@ func (h *QC) ApproveCertification(c *gin.Context) {
 		resp["coa"] = coa
 		resp["event_type"] = "qc.coa.issued"
 	}
+	// Certification is decided stage by stage: issuing the CoA is the terminal
+	// approval, anything else advanced the request to the next reviewer.
+	// Certification requests name their approver, not an addressable requester,
+	// so this goes to the quality desk.
+	if issued {
+		h.notifyAlert(c.Request.Context(), "approval.decision",
+			"Certification approved: "+req.BusinessID,
+			"Certification request "+req.BusinessID+" was approved and CoA "+coa.CoaNumber+" issued.")
+	} else {
+		h.notifyAlert(c.Request.Context(), "approval.pending",
+			"Certification awaiting approval: "+req.BusinessID,
+			"Certification request "+req.BusinessID+" was advanced by "+middleware.ActorLabel(c)+
+				" and is awaiting the next approval stage.")
+	}
 	c.JSON(http.StatusOK, resp)
 }
