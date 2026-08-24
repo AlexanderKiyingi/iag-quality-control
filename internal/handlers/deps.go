@@ -3,11 +3,9 @@ package handlers
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"net/http"
 	"os"
 	"strings"
-	"sync"
 
 	"github.com/gin-gonic/gin"
 
@@ -42,15 +40,16 @@ func (h *QC) publish(ctx context.Context, eventType string, data map[string]any)
 
 // notifyAlert emits qc.alert.raised (consumed by the central notifications
 // service off the iag.quality topic) using the shared
-// {channel,recipient,templateId,variables} envelope. It is a best-effort,
-// non-blocking side channel: it never fails the domain request and is a no-op
-// when no NOTIFY_DEFAULT_RECIPIENT is configured.
+// {channel,recipient,audience,templateId,variables} envelope. It is a
+// best-effort, non-blocking side channel that never fails the domain request.
+//
+// It addresses the "approvals.quality" audience, whose recipients an
+// administrator maintains centrally; NOTIFY_DEFAULT_RECIPIENT is the fallback
+// used until that audience is routed. Because the audience always travels, an
+// unset recipient is no longer a silent drop — notifications records it as an
+// unrouted audience and the admin UI lists it.
 func (h *QC) notifyAlert(ctx context.Context, templateID, title, body string) {
 	recipient := strings.TrimSpace(os.Getenv("NOTIFY_DEFAULT_RECIPIENT"))
-	if recipient == "" {
-		warnNoNotifyRecipient()
-		return
-	}
 	channel := strings.TrimSpace(os.Getenv("NOTIFY_CHANNEL"))
 	if channel == "" {
 		channel = "email"
@@ -58,6 +57,7 @@ func (h *QC) notifyAlert(ctx context.Context, templateID, title, body string) {
 	_ = h.publish(ctx, "qc.alert.raised", map[string]any{
 		"channel":    channel,
 		"recipient":  recipient,
+		"audience":   "approvals.quality",
 		"templateId": templateID,
 		"variables":  map[string]any{"Title": title, "Body": body},
 	})
@@ -133,14 +133,3 @@ func labResultPayload(summary store.BatchLabSummary) map[string]any {
 	return data
 }
 
-var notifyRecipientWarnOnce sync.Once
-
-// warnNoNotifyRecipient logs once when an alert is dropped for want of a
-// recipient. Without it an unset NOTIFY_DEFAULT_RECIPIENT is indistinguishable
-// from "no alerts were raised": the emitter returns early, nothing reaches the
-// notifications service, and no error appears anywhere.
-func warnNoNotifyRecipient() {
-	notifyRecipientWarnOnce.Do(func() {
-		slog.Warn("qc alert dropped: no recipient and NOTIFY_DEFAULT_RECIPIENT is unset; qc.alert.raised events will not be emitted")
-	})
-}
