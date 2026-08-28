@@ -13,6 +13,7 @@ import (
 
 func registerPermissionsLoop(ctx context.Context, cfg config.Config) {
 	if cfg.ServiceClientSecret == "" {
+		log.Printf("quality-control: SERVICE_CLIENT_SECRET unset — skipping permissions registration")
 		return
 	}
 	saClient := platformserviceauth.NewClient(platformserviceauth.Options{
