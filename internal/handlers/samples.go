@@ -5,6 +5,8 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+
+	"iag-quality-control/backend/internal/store"
 )
 
 func (h *QC) ListSamples(c *gin.Context) {
@@ -31,15 +33,26 @@ func (h *QC) GetSample(c *gin.Context) {
 	c.JSON(http.StatusOK, sample)
 }
 
+// PatchSample edits a sample. It used to bind {status} only, so a client that
+// wanted to change the priority or the technician had nowhere to send it —
+// the Lab app packed those into notes as JSON. Every field is optional and
+// nil leaves the column alone; a body with nothing set is a 400.
 func (h *QC) PatchSample(c *gin.Context) {
 	var body struct {
-		Status string `json:"status" binding:"required"`
+		Status       *string `json:"status"`
+		SampleType   *string `json:"sample_type"`
+		Priority     *string `json:"priority"`
+		AssignedTech *string `json:"assigned_tech"`
+		Notes        *string `json:"notes"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	sample, err := h.Store.UpdateSampleStatus(c.Request.Context(), c.Param("id"), body.Status)
+	sample, err := h.Store.UpdateSample(c.Request.Context(), c.Param("id"), store.SamplePatch{
+		Status: body.Status, SampleType: body.SampleType, Priority: body.Priority,
+		AssignedTech: body.AssignedTech, Notes: body.Notes,
+	})
 	if respondStoreErr(c, err) {
 		return
 	}

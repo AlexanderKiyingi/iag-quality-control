@@ -131,13 +131,40 @@ var allowedSampleStatuses = map[string]bool{
 	"pending": true, "urgent": true, "in-progress": true, "complete": true, "retest": true,
 }
 
+// SamplePatch is a partial update: nil leaves the column alone. Status is
+// validated against allowedSampleStatuses when set.
+type SamplePatch struct {
+	Status       *string
+	SampleType   *string
+	Priority     *string
+	AssignedTech *string
+	Notes        *string
+}
+
+// UpdateSampleStatus moves a sample's status. The tests and cupping flows
+// call it; PATCH /samples/:id goes through UpdateSample so a client can edit
+// the other columns without pretending they are part of the notes.
 func (s *Store) UpdateSampleStatus(ctx context.Context, businessID, status string) (Sample, error) {
-	status = strings.TrimSpace(status)
-	if status == "" || !allowedSampleStatuses[status] {
+	return s.UpdateSample(ctx, businessID, SamplePatch{Status: &status})
+}
+
+// UpdateSample applies a SamplePatch. At least one field must be set. Moving to
+// "complete" stamps completed_at, as it always has; every other column is
+// COALESCEd so an omitted field is left as it was.
+func (s *Store) UpdateSample(ctx context.Context, businessID string, p SamplePatch) (Sample, error) {
+	var status *string
+	if p.Status != nil {
+		trimmed := strings.TrimSpace(*p.Status)
+		if trimmed == "" || !allowedSampleStatuses[trimmed] {
+			return Sample{}, ErrBadInput
+		}
+		status = &trimmed
+	}
+	if status == nil && p.SampleType == nil && p.Priority == nil && p.AssignedTech == nil && p.Notes == nil {
 		return Sample{}, ErrBadInput
 	}
 	var completedAt *time.Time
-	if status == "complete" {
+	if status != nil && *status == "complete" {
 		now := time.Now().UTC()
 		completedAt = &now
 	}
@@ -145,11 +172,16 @@ func (s *Store) UpdateSampleStatus(ctx context.Context, businessID, status strin
 	var testsJSON []byte
 	err := s.pool.QueryRow(ctx, `
 		UPDATE qc_samples
-		SET status = $2, completed_at = COALESCE($3, completed_at)
+		SET status        = COALESCE($2, status),
+		    completed_at  = COALESCE($3, completed_at),
+		    sample_type   = COALESCE(NULLIF(TRIM($4), ''), sample_type),
+		    priority      = COALESCE(NULLIF(TRIM($5), ''), priority),
+		    assigned_tech = COALESCE($6, assigned_tech),
+		    notes         = COALESCE($7, notes)
 		WHERE business_id = $1
 		RETURNING business_id, batch_business_id, sample_type, status, priority,
 		          assigned_tech, tests_required, notes, received_at, completed_at, created_at`,
-		businessID, status, completedAt,
+		businessID, status, completedAt, p.SampleType, p.Priority, p.AssignedTech, p.Notes,
 	).Scan(
 		&out.BusinessID, &out.BatchBusinessID, &out.SampleType, &out.Status, &out.Priority,
 		&out.AssignedTech, &testsJSON, &out.Notes, &out.ReceivedAt, &out.CompletedAt, &out.CreatedAt,
