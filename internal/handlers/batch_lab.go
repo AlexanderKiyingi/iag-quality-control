@@ -11,7 +11,7 @@ import (
 )
 
 func (h *QC) GetBatchLab(c *gin.Context) {
-	batchID := c.Param("batchId")
+	batchID := c.Param("businessId")
 	summary, err := h.Store.GetBatchLabSummary(c.Request.Context(), batchID)
 	hasSummary := err == nil
 	if err != nil && !errors.Is(err, store.ErrNotFound) {

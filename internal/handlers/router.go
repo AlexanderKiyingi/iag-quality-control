@@ -88,7 +88,9 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 		v1.GET("/reports/audit-pack", middleware.RequirePermission("qc.export_audit_pack"), qc.AuditPack)
 
 		v1.GET("/batches", middleware.RequirePermission("qc.view_scm_context"), qc.ListBatches)
-		v1.GET("/batches/:batchId/lab", middleware.RequirePermission("qc.view_lab_summary"), qc.GetBatchLab)
+		// Same wildcard name as the sibling routes: gin panics at boot on
+		// "/batches/:batchId/lab" next to "/batches/:businessId/pipeline".
+		v1.GET("/batches/:businessId/lab", middleware.RequirePermission("qc.view_lab_summary"), qc.GetBatchLab)
 		v1.GET("/batches/:businessId/pipeline", middleware.RequirePermission("qc.view_lab_summary"), qc.GetBatchPipeline)
 		v1.GET("/batches/:businessId", middleware.RequirePermission("qc.view_scm_context"), qc.GetBatch)
 		v1.GET("/export-lots", middleware.RequirePermission("qc.view_scm_context"), qc.ListExportLots)
