@@ -88,7 +88,9 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 		v1.GET("/reports/audit-pack", middleware.RequirePermission("qc.export_audit_pack"), qc.AuditPack)
 
 		v1.GET("/batches", middleware.RequirePermission("qc.view_scm_context"), qc.ListBatches)
-		v1.GET("/batches/:batchId/lab", middleware.RequirePermission("qc.view_lab_summary"), qc.GetBatchLab)
+		// Same wildcard name as the sibling routes: gin panics at boot on
+		// "/batches/:batchId/lab" next to "/batches/:businessId/pipeline".
+		v1.GET("/batches/:businessId/lab", middleware.RequirePermission("qc.view_lab_summary"), qc.GetBatchLab)
 		v1.GET("/batches/:businessId/pipeline", middleware.RequirePermission("qc.view_lab_summary"), qc.GetBatchPipeline)
 		v1.GET("/batches/:businessId", middleware.RequirePermission("qc.view_scm_context"), qc.GetBatch)
 		v1.GET("/export-lots", middleware.RequirePermission("qc.view_scm_context"), qc.ListExportLots)
@@ -137,6 +139,12 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 		v1.GET("/coa/:coaNumber", middleware.RequirePermission("qc.view_coa"), qc.GetCoAByNumber)
 		v1.POST("/coa", middleware.RequirePermission("qc.issue_coa"), qc.PostCoA)
 
+		// Lab methods and requests (010). Reuse the instrument permissions: the
+		// people who keep the instrument register keep the method register.
+		v1.GET("/lab/methods", middleware.RequirePermission("qc.view_instruments"), qc.ListLabMethods)
+		v1.POST("/lab/methods", middleware.RequirePermission("qc.change_instruments"), qc.UpsertLabMethod)
+		v1.GET("/lab/requests", middleware.RequirePermission("qc.view_samples"), qc.ListLabRequests)
+		v1.POST("/lab/requests", middleware.RequirePermission("qc.add_sample"), qc.UpsertLabRequest)
 		v1.GET("/instruments", middleware.RequirePermission("qc.view_instruments"), qc.ListInstruments)
 		v1.POST("/instruments", middleware.RequirePermission("qc.change_instruments"), qc.UpsertInstrument)
 		v1.POST("/instruments/sync", middleware.RequirePermission("qc.sync_instruments"), qc.SyncInstruments)
