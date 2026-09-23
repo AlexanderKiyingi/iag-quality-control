@@ -61,13 +61,13 @@ func (h *QC) UpsertCAPA(c *gin.Context) {
 	var body struct {
 		BusinessID       string  `json:"business_id"`
 		Title            string  `json:"title" binding:"required"`
-		SourceRef        string  `json:"source_ref"`
-		Status           string  `json:"status"`
-		Priority         string  `json:"priority"`
-		Owner            string  `json:"owner"`
-		RootCause        string  `json:"root_cause"`
-		CorrectiveAction string  `json:"corrective_action"`
-		OpenedAt         string  `json:"opened_at"`
+		SourceRef        *string `json:"source_ref"`
+		Status           *string `json:"status"`
+		Priority         *string `json:"priority"`
+		Owner            *string `json:"owner"`
+		RootCause        *string `json:"root_cause"`
+		CorrectiveAction *string `json:"corrective_action"`
+		OpenedAt         *string `json:"opened_at"`
 		ClosedAt         *string `json:"closed_at"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
