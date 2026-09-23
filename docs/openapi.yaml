@@ -247,3 +247,26 @@ paths:
       summary: List stability studies
     post:
       summary: Upsert stability study
+  /api/v1/non-conformances:
+    get:
+      summary: List non-conformances
+    post:
+      summary: Upsert non-conformance
+  /api/v1/non-conformances/{id}:
+    get:
+      summary: Single non-conformance
+  /api/v1/in-process-checks:
+    get:
+      summary: List in-process checks
+    post:
+      summary: Upsert in-process check
+  /api/v1/release-decisions:
+    get:
+      summary: List batch release decisions
+    post:
+      summary: Record a batch release decision (emits qc.batch.released / qc.batch.held)
+  /api/v1/hold-events:
+    get:
+      summary: List hold and release events
+    post:
+      summary: Append a hold or release event
