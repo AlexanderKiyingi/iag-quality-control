@@ -69,6 +69,12 @@ func (h *QC) UpsertCAPA(c *gin.Context) {
 		CorrectiveAction *string `json:"corrective_action"`
 		OpenedAt         *string `json:"opened_at"`
 		ClosedAt         *string `json:"closed_at"`
+		// Migration 012 — the four the form always collected and always lost.
+		DueDate       *string        `json:"due_date"`
+		CAPAKind      *string        `json:"capa_kind"`
+		Effectiveness *string        `json:"effectiveness"`
+		Attachments   *string        `json:"attachments"`
+		Attrs         map[string]any `json:"attrs"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -78,6 +84,8 @@ func (h *QC) UpsertCAPA(c *gin.Context) {
 		BusinessID: body.BusinessID, Title: body.Title, SourceRef: body.SourceRef, Status: body.Status,
 		Priority: body.Priority, Owner: body.Owner, RootCause: body.RootCause,
 		CorrectiveAction: body.CorrectiveAction, OpenedAt: body.OpenedAt, ClosedAt: body.ClosedAt,
+		DueDate: body.DueDate, CAPAKind: body.CAPAKind, Effectiveness: body.Effectiveness,
+		Attachments: body.Attachments, Attrs: body.Attrs,
 	})
 	if respondStoreErr(c, err) {
 		return

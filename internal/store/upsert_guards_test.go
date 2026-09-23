@@ -178,3 +178,97 @@ func TestCalibrationVocabulary(t *testing.T) {
 		t.Errorf("normalizeCalResult dropped an unknown verdict: %q", got)
 	}
 }
+
+// Migration 012 resources.
+func TestQARegisterWritesValidateBeforeTouchingThePool(t *testing.T) {
+	s := &Store{}
+	ctx := context.Background()
+
+	cases := []struct {
+		name string
+		call func() error
+	}{
+		{"non-conformance without a title", func() error {
+			_, err := s.UpsertNonConformance(ctx, UpsertNonConformanceInput{BusinessID: "NCR-26-0001"})
+			return err
+		}},
+		{"in-process check without a parameter", func() error {
+			_, err := s.UpsertInProcessCheck(ctx, UpsertInProcessCheckInput{BusinessID: "IPC-26-0001"})
+			return err
+		}},
+		{"release decision without a batch", func() error {
+			_, _, err := s.UpsertReleaseDecision(ctx, UpsertReleaseDecisionInput{BusinessID: "REL-26-0001"})
+			return err
+		}},
+		{"hold event without a batch", func() error {
+			_, err := s.CreateHoldEvent(ctx, CreateHoldEventInput{BusinessID: "HLD-26-0001", Event: "Released"})
+			return err
+		}},
+		{"hold event without an event", func() error {
+			_, err := s.CreateHoldEvent(ctx, CreateHoldEventInput{BusinessID: "HLD-26-0001", BatchRef: "BATCH-1"})
+			return err
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.call(); !errors.Is(err, ErrBadInput) {
+				t.Fatalf("got %v, want ErrBadInput", err)
+			}
+		})
+	}
+}
+
+/*
+The release-decision vocabulary decides what other services do.
+
+iag-traceability gates QR publish on qc.* events and iag-warehouse consumes them,
+so a decision mapped to the wrong event type moves real stock. An unrecognised
+decision must map to no event — silence is recoverable, a batch wrongly announced
+as released is not.
+*/
+func TestReleaseDecisionVocabularyAndEvents(t *testing.T) {
+	for in, want := range map[string]string{
+		"Released": "released", "release": "released",
+		"Conditional release": "conditional", "conditional": "conditional",
+		"Hold": "hold", "On hold": "hold",
+		"Reject": "reject", "Rejected": "reject",
+		"Rework": "rework",
+		"":       "",
+	} {
+		if got := NormalizeReleaseDecision(in); got != want {
+			t.Errorf("NormalizeReleaseDecision(%q) = %q, want %q", in, got, want)
+		}
+	}
+
+	for in, want := range map[string]string{
+		"Released":            "qc.batch.released",
+		"Conditional release": "qc.batch.released",
+		"Hold":                "qc.batch.held",
+		"Reject":              "qc.batch.held",
+		"Rework":              "qc.batch.held",
+		"":                    "",
+		"Pending review":      "", // unknown: announce nothing
+	} {
+		if got := ReleaseEventType(in); got != want {
+			t.Errorf("ReleaseEventType(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestHoldEventVocabulary(t *testing.T) {
+	for in, want := range map[string]string{
+		"Placed on hold": "placed_on_hold", "hold": "placed_on_hold",
+		"Released": "released", "Rejected": "rejected", "Reworked": "reworked", "": "",
+	} {
+		if got := normalizeHoldEvent(in); got != want {
+			t.Errorf("normalizeHoldEvent(%q) = %q, want %q", in, got, want)
+		}
+	}
+	for in, want := range map[string]string{
+		"Active hold": "active_hold", "Cleared": "cleared", "Scrapped": "scrapped", "": "",
+	} {
+		if got := normalizeHoldStatus(in); got != want {
+			t.Errorf("normalizeHoldStatus(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

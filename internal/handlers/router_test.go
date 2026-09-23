@@ -27,6 +27,15 @@ func TestNewRouterRegistersLabModuleRoutes(t *testing.T) {
 		"GET /api/v1/calibrations/:id",
 		"GET /api/v1/stability-studies",
 		"POST /api/v1/stability-studies",
+		"GET /api/v1/non-conformances",
+		"POST /api/v1/non-conformances",
+		"GET /api/v1/non-conformances/:id",
+		"GET /api/v1/in-process-checks",
+		"POST /api/v1/in-process-checks",
+		"GET /api/v1/release-decisions",
+		"POST /api/v1/release-decisions",
+		"GET /api/v1/hold-events",
+		"POST /api/v1/hold-events",
 	} {
 		if !registered[want] {
 			t.Errorf("route not registered: %s", want)

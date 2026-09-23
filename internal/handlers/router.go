@@ -160,6 +160,24 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 		v1.GET("/calibrations/:id", middleware.RequirePermission("qc.view_instruments"), qc.GetCalibration)
 		v1.GET("/stability-studies", middleware.RequirePermission("qc.view_samples"), qc.ListStabilityStudies)
 		v1.POST("/stability-studies", middleware.RequirePermission("qc.add_sample"), qc.UpsertStabilityStudy)
+
+		// QA registers (012). Same reasoning as above: fresh top-level segments,
+		// one wildcard name (":id") per position.
+		//
+		// Non-conformances and in-process checks reuse the compliance
+		// permissions — they are the compliance officer's registers. Release
+		// decisions and the hold log get the one new pair, because releasing or
+		// holding a batch emits events other services act on and must be
+		// grantable apart from data entry.
+		v1.GET("/non-conformances", middleware.RequirePermission("qc.view_compliance"), qc.ListNonConformances)
+		v1.POST("/non-conformances", middleware.RequirePermission("qc.change_compliance"), qc.UpsertNonConformance)
+		v1.GET("/non-conformances/:id", middleware.RequirePermission("qc.view_compliance"), qc.GetNonConformance)
+		v1.GET("/in-process-checks", middleware.RequirePermission("qc.view_compliance"), qc.ListInProcessChecks)
+		v1.POST("/in-process-checks", middleware.RequirePermission("qc.change_compliance"), qc.UpsertInProcessCheck)
+		v1.GET("/release-decisions", middleware.RequirePermission("qc.view_release_decisions"), qc.ListReleaseDecisions)
+		v1.POST("/release-decisions", middleware.RequirePermission("qc.decide_release"), qc.UpsertReleaseDecision)
+		v1.GET("/hold-events", middleware.RequirePermission("qc.view_release_decisions"), qc.ListHoldEvents)
+		v1.POST("/hold-events", middleware.RequirePermission("qc.decide_release"), qc.CreateHoldEvent)
 		v1.GET("/instruments", middleware.RequirePermission("qc.view_instruments"), qc.ListInstruments)
 		v1.POST("/instruments", middleware.RequirePermission("qc.change_instruments"), qc.UpsertInstrument)
 		v1.POST("/instruments/sync", middleware.RequirePermission("qc.sync_instruments"), qc.SyncInstruments)

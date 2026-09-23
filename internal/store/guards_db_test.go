@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"testing"
@@ -217,6 +218,106 @@ func TestUpsertGuardsAgainstRealPostgres(t *testing.T) {
 		}
 		if orphan.InstrumentName != "Borrowed refractometer" {
 			t.Errorf("unregistered calibration lost its label: %q", orphan.InstrumentName)
+		}
+	})
+
+	t.Run("release decision announces once, not on every edit", func(t *testing.T) {
+		rel := id("REL")
+		_, emit, err := s.UpsertReleaseDecision(ctx, UpsertReleaseDecisionInput{
+			BusinessID: rel, BatchRef: "BATCH-1", Product: ptr("Arabica AA"),
+			Decision: ptr("Released"), DecidedBy: ptr("QA lead"),
+		})
+		if err != nil {
+			t.Fatalf("create: %v", err)
+		}
+		if !emit {
+			t.Fatal("a new released decision must be announced")
+		}
+
+		// Editing anything else must NOT re-announce: warehouse and traceability
+		// act on these events, and a batch is released once.
+		got, emit, err := s.UpsertReleaseDecision(ctx, UpsertReleaseDecisionInput{
+			BusinessID: rel, BatchRef: "BATCH-1", Notes: ptr("typo fixed"),
+		})
+		if err != nil {
+			t.Fatalf("edit: %v", err)
+		}
+		if emit {
+			t.Error("editing the notes re-announced the release")
+		}
+		if got.Decision != "released" {
+			t.Errorf("decision not preserved by a partial save: %q", got.Decision)
+		}
+		if got.Product != "Arabica AA" {
+			t.Errorf("product blanked by a partial save: %q", got.Product)
+		}
+
+		// Changing the decision must announce again, with the other event type.
+		changed, emit, err := s.UpsertReleaseDecision(ctx, UpsertReleaseDecisionInput{
+			BusinessID: rel, BatchRef: "BATCH-1", Decision: ptr("Hold"),
+		})
+		if err != nil {
+			t.Fatalf("change decision: %v", err)
+		}
+		if !emit {
+			t.Error("changing the decision must be announced")
+		}
+		if ReleaseEventType(changed.Decision) != "qc.batch.held" {
+			t.Errorf("wrong event for %q: %s", changed.Decision, ReleaseEventType(changed.Decision))
+		}
+	})
+
+	t.Run("hold log refuses to rewrite an existing reference", func(t *testing.T) {
+		hld := id("HLD")
+		if _, err := s.CreateHoldEvent(ctx, CreateHoldEventInput{
+			BusinessID: hld, BatchRef: "BATCH-1", Event: "Placed on hold", Reason: "moisture high",
+		}); err != nil {
+			t.Fatalf("create: %v", err)
+		}
+		// An audit log that can be rewritten is not one.
+		if _, err := s.CreateHoldEvent(ctx, CreateHoldEventInput{
+			BusinessID: hld, BatchRef: "BATCH-1", Event: "Released", Reason: "overwritten",
+		}); !errors.Is(err, ErrConflict) {
+			t.Fatalf("re-posting the same reference gave %v, want ErrConflict", err)
+		}
+	})
+
+	t.Run("non-conformance keeps the columns a partial save omitted", func(t *testing.T) {
+		ncr := id("NCR")
+		if _, err := s.UpsertNonConformance(ctx, UpsertNonConformanceInput{
+			BusinessID: ncr, Title: "Foreign matter", Severity: ptr("major"),
+			Owner: ptr("A. Owner"), Description: ptr("found in sample"), RootCause: ptr("screen torn"),
+			Status: ptr("under_investigation"),
+		}); err != nil {
+			t.Fatalf("create: %v", err)
+		}
+		got, err := s.UpsertNonConformance(ctx, UpsertNonConformanceInput{
+			BusinessID: ncr, Title: "Foreign matter (confirmed)",
+		})
+		if err != nil {
+			t.Fatalf("partial save: %v", err)
+		}
+		if got.Severity != "major" || got.RootCause != "screen torn" || got.Status != "under_investigation" {
+			t.Errorf("partial save blanked a column: sev=%q root=%q status=%q",
+				got.Severity, got.RootCause, got.Status)
+		}
+	})
+
+	t.Run("CAPA carries the four fields the form used to drop", func(t *testing.T) {
+		capa := id("CAPAX")
+		got, err := s.UpsertCAPA(ctx, UpsertCAPAInput{
+			BusinessID: capa, Title: "Replace screen", DueDate: ptr("2026-11-30"),
+			CAPAKind: ptr("Corrective"), Effectiveness: ptr("re-inspect after 30 days"),
+			Attachments: ptr("[]"),
+		})
+		if err != nil {
+			t.Fatalf("create: %v", err)
+		}
+		if got.DueDate == nil || *got.DueDate != "2026-11-30" {
+			t.Errorf("due_date not stored: %v", got.DueDate)
+		}
+		if got.CAPAKind != "Corrective" || got.Effectiveness == "" {
+			t.Errorf("capa_kind/effectiveness not stored: %q / %q", got.CAPAKind, got.Effectiveness)
 		}
 	})
 

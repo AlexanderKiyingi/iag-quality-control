@@ -31,6 +31,13 @@ type CAPA struct {
 	CorrectiveAction string  `json:"corrective_action"`
 	OpenedAt         string  `json:"opened_at"`
 	ClosedAt         *string `json:"closed_at,omitempty"`
+	// Migration 012. The CAPA form has collected all four since it was written
+	// and silently dropped them for want of a column.
+	DueDate       *string        `json:"due_date,omitempty"`
+	CAPAKind      string         `json:"capa_kind"`
+	Effectiveness string         `json:"effectiveness"`
+	Attachments   string         `json:"attachments"`
+	Attrs         map[string]any `json:"attrs"`
 }
 
 type CreateComplianceLogInput struct {
@@ -58,6 +65,11 @@ type UpsertCAPAInput struct {
 	CorrectiveAction *string
 	OpenedAt         *string
 	ClosedAt         *string
+	DueDate          *string
+	CAPAKind         *string
+	Effectiveness    *string
+	Attachments      *string
+	Attrs            map[string]any
 }
 
 func (s *Store) ListComplianceLogs(ctx context.Context, limit int) ([]ComplianceLog, error) {
@@ -118,13 +130,29 @@ func (s *Store) CreateComplianceLog(ctx context.Context, in CreateComplianceLogI
 	return out, err
 }
 
+const capaCols = `business_id, title, source_ref, status, priority, owner, root_cause,
+	corrective_action, opened_at::text, closed_at::text, due_date::text, capa_kind,
+	effectiveness, attachments, attrs`
+
+func scanCAPA(rows interface{ Scan(...any) error }) (CAPA, error) {
+	var item CAPA
+	var attrs []byte
+	if err := rows.Scan(&item.BusinessID, &item.Title, &item.SourceRef, &item.Status,
+		&item.Priority, &item.Owner, &item.RootCause, &item.CorrectiveAction, &item.OpenedAt,
+		&item.ClosedAt, &item.DueDate, &item.CAPAKind, &item.Effectiveness, &item.Attachments,
+		&attrs); err != nil {
+		return CAPA{}, err
+	}
+	item.Attrs = attrsMap(attrs)
+	return item, nil
+}
+
 func (s *Store) ListCAPAs(ctx context.Context, status string, limit int) ([]CAPA, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
 	q := `
-		SELECT business_id, title, source_ref, status, priority, owner,
-		       root_cause, corrective_action, opened_at::text, closed_at::text
+		SELECT ` + capaCols + `
 		FROM qc_capas`
 	args := []any{}
 	if status != "" && status != "all" {
@@ -141,13 +169,10 @@ func (s *Store) ListCAPAs(ctx context.Context, status string, limit int) ([]CAPA
 		return nil, err
 	}
 	defer rows.Close()
-	var out []CAPA
+	out := []CAPA{}
 	for rows.Next() {
-		var item CAPA
-		if err := rows.Scan(
-			&item.BusinessID, &item.Title, &item.SourceRef, &item.Status, &item.Priority, &item.Owner,
-			&item.RootCause, &item.CorrectiveAction, &item.OpenedAt, &item.ClosedAt,
-		); err != nil {
+		item, err := scanCAPA(rows)
+		if err != nil {
 			return nil, err
 		}
 		out = append(out, item)
@@ -177,16 +202,18 @@ func (s *Store) UpsertCAPA(ctx context.Context, in UpsertCAPAInput) (CAPA, error
 	// Only a CAPA being created needs today's date; an update leaves whatever
 	// it was opened on alone.
 	openedAt := blankToNil(in.OpenedAt)
-	var out CAPA
-	err := s.pool.QueryRow(ctx, `
+	rows, err := s.pool.Query(ctx, `
 		INSERT INTO qc_capas (
 			business_id, title, source_ref, status, priority, owner,
-			root_cause, corrective_action, opened_at, closed_at
+			root_cause, corrective_action, opened_at, closed_at,
+			due_date, capa_kind, effectiveness, attachments, attrs
 		) VALUES (
 			$1, $2,
 			COALESCE($3::text, ''), COALESCE($4::text, 'open'), COALESCE($5::text, ''),
 			COALESCE($6::text, ''), COALESCE($7::text, ''), COALESCE($8::text, ''),
-			COALESCE(NULLIF($9::text, '')::date, CURRENT_DATE), NULLIF($10::text, '')::date
+			COALESCE(NULLIF($9::text, '')::date, CURRENT_DATE), NULLIF($10::text, '')::date,
+			NULLIF($11::text, '')::date, COALESCE($12::text, ''), COALESCE($13::text, ''),
+			COALESCE($14::text, ''), COALESCE($15::jsonb, '{}'::jsonb)
 		)
 		ON CONFLICT (business_id) DO UPDATE SET
 			title = EXCLUDED.title,
@@ -201,17 +228,32 @@ func (s *Store) UpsertCAPA(ctx context.Context, in UpsertCAPAInput) (CAPA, error
 			                 ELSE $9::date END,
 			closed_at = CASE WHEN $10::text IS NULL THEN qc_capas.closed_at
 			                 WHEN $10::text = '' THEN NULL
-			                 ELSE $10::date END
-		RETURNING business_id, title, source_ref, status, priority, owner,
-		          root_cause, corrective_action, opened_at::text, closed_at::text`,
+			                 ELSE $10::date END,
+			due_date = CASE WHEN $11::text IS NULL THEN qc_capas.due_date
+			                WHEN $11::text = '' THEN NULL
+			                ELSE $11::date END,
+			capa_kind = COALESCE($12::text, qc_capas.capa_kind),
+			effectiveness = COALESCE($13::text, qc_capas.effectiveness),
+			attachments = COALESCE($14::text, qc_capas.attachments),
+			attrs = CASE WHEN $15::jsonb IS NULL THEN qc_capas.attrs
+			             ELSE qc_capas.attrs || $15::jsonb END
+		RETURNING `+capaCols,
 		id, title, trimOptional(in.SourceRef), blankToNil(in.Status), trimOptional(in.Priority),
 		trimOptional(in.Owner), trimOptional(in.RootCause), trimOptional(in.CorrectiveAction),
-		openedAt, in.ClosedAt,
-	).Scan(
-		&out.BusinessID, &out.Title, &out.SourceRef, &out.Status, &out.Priority, &out.Owner,
-		&out.RootCause, &out.CorrectiveAction, &out.OpenedAt, &out.ClosedAt,
+		openedAt, in.ClosedAt, in.DueDate, trimOptional(in.CAPAKind),
+		in.Effectiveness, in.Attachments, attrsOptional(in.Attrs),
 	)
-	return out, err
+	if err != nil {
+		return CAPA{}, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return CAPA{}, err
+		}
+		return CAPA{}, ErrNotFound
+	}
+	return scanCAPA(rows)
 }
 
 func (s *Store) OpenCAPAsCount(ctx context.Context) (int, error) {

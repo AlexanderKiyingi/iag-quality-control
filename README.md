@@ -92,6 +92,25 @@ the calibration calendar and the overdue count keep working off the columns they
 already read. Latest event wins, so back-filling history cannot drag a due date
 backwards.
 
+### QA registers (Phase 5)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET/POST | `/api/v1/non-conformances` | Non-conformance register; `?status=&severity=&limit=` |
+| GET | `/api/v1/non-conformances/{id}` | Single NC |
+| GET/POST | `/api/v1/in-process-checks` | In-process quality checks; `?batch=&status=&limit=` |
+| GET/POST | `/api/v1/release-decisions` | Batch release decisions; `?batch=&decision=&limit=` |
+| GET/POST | `/api/v1/hold-events` | Hold and release log (append-only); `?batch=&status=&limit=` |
+
+A non-conformance is the finding and a CAPA is the response, linked by
+`qc_capas.source_ref` carrying the NC's `business_id`. The hold log is
+append-only: re-posting an existing `business_id` is **409**, not an update.
+
+`POST /api/v1/release-decisions` emits `qc.batch.released` (released,
+conditional) or `qc.batch.held` (hold, reject, rework) — but **only when the
+decision is new or has changed**, since the route is an upsert and a batch is
+released once. An unrecognised decision emits nothing rather than guessing.
+
 ### SCM context proxies (read-only)
 
 | Method | Path | Description |
@@ -188,10 +207,16 @@ Instruments accept `mes_asset_tag` for auto-sync (background job every `INSTRUME
 | `qc.sample.submitted` | Sample registered |
 | `qc.lab.result_recorded` | Test or lab summary update |
 | `qc.coa.issued` | CoA issued (direct or via certification) |
+| `qc.batch.released` | Release decision of `released` or `conditional`, first time or on change |
+| `qc.batch.held` | Release decision of `hold`, `reject` or `rework`, first time or on change |
+
+The two `qc.batch.*` types have **no consumer yet**. Both `iag-warehouse` and
+`iag-traceability` ignore unknown event types (`default: return nil`), so they are
+inert until a consumer opts in — safe to ship, but not yet integrated.
 
 ## RBAC codenames
 
-Registered at startup (`quality-control` service): `qc.view_samples`, `qc.add_sample`, `qc.record_tests`, `qc.issue_coa`, `qc.approve_certification`, `qc.view_instruments`, `qc.view_compliance`, `qc.view_reports`, `qc.admin.read`, etc. Gateway still requires `platform.access_quality_control`.
+Registered at startup (`quality-control` service): `qc.view_samples`, `qc.add_sample`, `qc.record_tests`, `qc.issue_coa`, `qc.approve_certification`, `qc.view_instruments`, `qc.view_compliance`, `qc.view_reports`, `qc.admin.read`, `qc.view_release_decisions`, `qc.decide_release`, etc. Gateway still requires `platform.access_quality_control`.
 
 ## Integration
 
