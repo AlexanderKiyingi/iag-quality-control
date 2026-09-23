@@ -69,6 +69,29 @@ Stages: `qc_review` → `ops_approval` → `ceo_signoff` → `coa_issued` → `e
 | GET/POST | `/api/v1/compliance/logs` | HACCP / ISO CCP logs |
 | GET/POST | `/api/v1/compliance/capas` | CAPA tracking |
 
+### Lab registers (Phase 5)
+
+Added for the Lab app's own screens. Methods and requests arrived with migration
+010 and were never documented here; calibrations and stability studies with 011.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET/POST | `/api/v1/lab/methods` | Written test procedures (upsert by `business_id`) |
+| GET/POST | `/api/v1/lab/requests` | Work asked of the lab (upsert by `business_id`) |
+| GET/POST | `/api/v1/calibrations` | Instrument calibration events; `?instrument=&status=&limit=` |
+| GET | `/api/v1/calibrations/{id}` | Single calibration |
+| GET/POST | `/api/v1/stability-studies` | Stability studies (upsert by `business_id`); `?status=&limit=` |
+
+A calibration is an event, so there is no update verb and history is read from
+the collection filtered by instrument — **not** from a nested route under
+`/instruments/{id}`, which would put a second wildcard name in a position that
+already has one and make the router panic at startup.
+
+Recording a calibration also mirrors its dates onto the instrument register, so
+the calibration calendar and the overdue count keep working off the columns they
+already read. Latest event wins, so back-filling history cannot drag a due date
+backwards.
+
 ### SCM context proxies (read-only)
 
 | Method | Path | Description |

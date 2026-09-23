@@ -224,3 +224,26 @@ paths:
       summary: List CAPAs
     post:
       summary: Upsert CAPA
+  /api/v1/lab/methods:
+    get:
+      summary: List lab methods
+    post:
+      summary: Upsert lab method
+  /api/v1/lab/requests:
+    get:
+      summary: List lab requests
+    post:
+      summary: Upsert lab request
+  /api/v1/calibrations:
+    get:
+      summary: List instrument calibrations
+    post:
+      summary: Record an instrument calibration
+  /api/v1/calibrations/{id}:
+    get:
+      summary: Single calibration
+  /api/v1/stability-studies:
+    get:
+      summary: List stability studies
+    post:
+      summary: Upsert stability study
