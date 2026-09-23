@@ -45,16 +45,18 @@ type CreateComplianceLogInput struct {
 	ActionTaken   string
 }
 
+// UpsertCAPAInput is the write shape for a CAPA. Everything but Title follows
+// the nil/""/value contract in optional.go.
 type UpsertCAPAInput struct {
 	BusinessID       string
 	Title            string
-	SourceRef        string
-	Status           string
-	Priority         string
-	Owner            string
-	RootCause        string
-	CorrectiveAction string
-	OpenedAt         string
+	SourceRef        *string
+	Status           *string
+	Priority         *string
+	Owner            *string
+	RootCause        *string
+	CorrectiveAction *string
+	OpenedAt         *string
 	ClosedAt         *string
 }
 
@@ -153,7 +155,17 @@ func (s *Store) ListCAPAs(ctx context.Context, status string, limit int) ([]CAPA
 	return out, rows.Err()
 }
 
+// UpsertCAPA creates or updates a CAPA by business_id, preserving any column
+// the caller did not send.
+//
+// It used to replace every column from EXCLUDED, with status defaulting to
+// "open" whenever it was absent — so re-saving a closed CAPA to correct a typo
+// in the owner reopened it.
 func (s *Store) UpsertCAPA(ctx context.Context, in UpsertCAPAInput) (CAPA, error) {
+	title := strings.TrimSpace(in.Title)
+	if title == "" {
+		return CAPA{}, ErrBadInput
+	}
 	id := strings.TrimSpace(in.BusinessID)
 	if id == "" {
 		var err error
@@ -162,38 +174,38 @@ func (s *Store) UpsertCAPA(ctx context.Context, in UpsertCAPAInput) (CAPA, error
 			return CAPA{}, err
 		}
 	}
-	title := strings.TrimSpace(in.Title)
-	if title == "" {
-		return CAPA{}, ErrBadInput
-	}
-	status := strings.TrimSpace(in.Status)
-	if status == "" {
-		status = "open"
-	}
-	openedAt := strings.TrimSpace(in.OpenedAt)
-	if openedAt == "" {
-		openedAt = time.Now().UTC().Format("2006-01-02")
-	}
+	// Only a CAPA being created needs today's date; an update leaves whatever
+	// it was opened on alone.
+	openedAt := blankToNil(in.OpenedAt)
 	var out CAPA
 	err := s.pool.QueryRow(ctx, `
 		INSERT INTO qc_capas (
 			business_id, title, source_ref, status, priority, owner,
 			root_cause, corrective_action, opened_at, closed_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+		) VALUES (
+			$1, $2,
+			COALESCE($3::text, ''), COALESCE($4::text, 'open'), COALESCE($5::text, ''),
+			COALESCE($6::text, ''), COALESCE($7::text, ''), COALESCE($8::text, ''),
+			COALESCE(NULLIF($9::text, '')::date, CURRENT_DATE), NULLIF($10::text, '')::date
+		)
 		ON CONFLICT (business_id) DO UPDATE SET
 			title = EXCLUDED.title,
-			source_ref = EXCLUDED.source_ref,
-			status = EXCLUDED.status,
-			priority = EXCLUDED.priority,
-			owner = EXCLUDED.owner,
-			root_cause = EXCLUDED.root_cause,
-			corrective_action = EXCLUDED.corrective_action,
-			opened_at = EXCLUDED.opened_at,
-			closed_at = EXCLUDED.closed_at
+			source_ref = COALESCE($3::text, qc_capas.source_ref),
+			status = COALESCE($4::text, qc_capas.status),
+			priority = COALESCE($5::text, qc_capas.priority),
+			owner = COALESCE($6::text, qc_capas.owner),
+			root_cause = COALESCE($7::text, qc_capas.root_cause),
+			corrective_action = COALESCE($8::text, qc_capas.corrective_action),
+			opened_at = CASE WHEN $9::text IS NULL THEN qc_capas.opened_at
+			                 WHEN $9::text = '' THEN NULL
+			                 ELSE $9::date END,
+			closed_at = CASE WHEN $10::text IS NULL THEN qc_capas.closed_at
+			                 WHEN $10::text = '' THEN NULL
+			                 ELSE $10::date END
 		RETURNING business_id, title, source_ref, status, priority, owner,
 		          root_cause, corrective_action, opened_at::text, closed_at::text`,
-		id, title, strings.TrimSpace(in.SourceRef), status, strings.TrimSpace(in.Priority),
-		strings.TrimSpace(in.Owner), strings.TrimSpace(in.RootCause), strings.TrimSpace(in.CorrectiveAction),
+		id, title, trimOptional(in.SourceRef), blankToNil(in.Status), trimOptional(in.Priority),
+		trimOptional(in.Owner), trimOptional(in.RootCause), trimOptional(in.CorrectiveAction),
 		openedAt, in.ClosedAt,
 	).Scan(
 		&out.BusinessID, &out.Title, &out.SourceRef, &out.Status, &out.Priority, &out.Owner,

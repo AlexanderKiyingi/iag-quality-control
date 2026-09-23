@@ -21,12 +21,34 @@ func (h *QC) ListLabMethods(c *gin.Context) {
 }
 
 func (h *QC) UpsertLabMethod(c *gin.Context) {
-	var body store.LabMethod
+	// Bound separately from store.LabMethod so the optional fields can be
+	// pointers without turning every empty string in the response into null.
+	var body struct {
+		BusinessID         string         `json:"business_id"`
+		Name               string         `json:"name"`
+		Version            *string        `json:"version"`
+		Scope              *string        `json:"scope"`
+		Equipment          *string        `json:"equipment"`
+		Procedure          *string        `json:"procedure"`
+		AcceptanceCriteria *string        `json:"acceptance_criteria"`
+		Status             *string        `json:"status"`
+		Attrs              map[string]any `json:"attrs"`
+	}
 	if err := bindJSONCoerced(c, &body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	item, err := h.Store.UpsertLabMethod(c.Request.Context(), body)
+	item, err := h.Store.UpsertLabMethod(c.Request.Context(), store.UpsertLabMethodInput{
+		BusinessID:         body.BusinessID,
+		Name:               body.Name,
+		Version:            body.Version,
+		Scope:              body.Scope,
+		Equipment:          body.Equipment,
+		Procedure:          body.Procedure,
+		AcceptanceCriteria: body.AcceptanceCriteria,
+		Status:             body.Status,
+		Attrs:              body.Attrs,
+	})
 	if respondStoreErr(c, err) {
 		return
 	}
@@ -47,12 +69,36 @@ func (h *QC) ListLabRequests(c *gin.Context) {
 }
 
 func (h *QC) UpsertLabRequest(c *gin.Context) {
-	var body store.LabRequest
+	var body struct {
+		BusinessID  string         `json:"business_id"`
+		Product     string         `json:"product"`
+		RequestDate *string        `json:"request_date"`
+		RequestedBy *string        `json:"requested_by"`
+		Priority    *string        `json:"priority"`
+		Objective   *string        `json:"objective"`
+		NeededBy    *string        `json:"needed_by"`
+		MethodID    *string        `json:"method_id"`
+		Status      *string        `json:"status"`
+		Notes       *string        `json:"notes"`
+		Attrs       map[string]any `json:"attrs"`
+	}
 	if err := bindJSONCoerced(c, &body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	item, err := h.Store.UpsertLabRequest(c.Request.Context(), body)
+	item, err := h.Store.UpsertLabRequest(c.Request.Context(), store.UpsertLabRequestInput{
+		BusinessID:  body.BusinessID,
+		Product:     body.Product,
+		RequestDate: body.RequestDate,
+		RequestedBy: body.RequestedBy,
+		Priority:    body.Priority,
+		Objective:   body.Objective,
+		NeededBy:    body.NeededBy,
+		MethodID:    body.MethodID,
+		Status:      body.Status,
+		Notes:       body.Notes,
+		Attrs:       body.Attrs,
+	})
 	if respondStoreErr(c, err) {
 		return
 	}

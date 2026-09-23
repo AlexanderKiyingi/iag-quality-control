@@ -93,8 +93,15 @@ func coerceScalarStrings(t reflect.Type, m map[string]any) {
 				reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 				reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
 				reflect.Bool:
-				// Blank numeric/bool form value clears the field: JSON null decodes
-				// to zero (value) or nil (pointer); "" would fail the unmarshal.
+				// A blank numeric/bool form value becomes JSON null, which "" cannot
+				// be: it would fail the unmarshal outright.
+				//
+				// What null then means depends on the field. On a value field it
+				// decodes to the zero value, so the field is cleared. On a pointer
+				// field it decodes to nil, which the upsert stores read as "the
+				// caller did not send this" and therefore PRESERVE — so posting
+				// {"samples_24h": ""} keeps the stored count rather than zeroing
+				// it. See internal/store/optional.go.
 				m[name] = nil
 				continue
 			}

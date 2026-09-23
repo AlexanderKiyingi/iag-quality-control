@@ -20,13 +20,16 @@ type ExternalAudit struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+// UpsertExternalAuditInput is the write shape for an external audit. AuditType
+// and AuditDate are required; the rest follow the nil/""/value contract in
+// optional.go.
 type UpsertExternalAuditInput struct {
 	BusinessID  string
 	AuditType   string
-	Body        string
-	Description string
+	Body        *string
+	Description *string
 	AuditDate   string
-	Status      string
+	Status      *string
 }
 
 func (s *Store) ListExternalAudits(ctx context.Context, from, to string) ([]ExternalAudit, error) {
@@ -61,6 +64,10 @@ func (s *Store) ListExternalAudits(ctx context.Context, from, to string) ([]Exte
 	return out, rows.Err()
 }
 
+// UpsertExternalAudit creates or updates an audit by business_id, preserving
+// any column the caller did not send. It used to replace every column from
+// EXCLUDED, so a save that carried only the status blanked the auditing body
+// and the description.
 func (s *Store) UpsertExternalAudit(ctx context.Context, in UpsertExternalAuditInput) (ExternalAudit, error) {
 	auditType := strings.TrimSpace(in.AuditType)
 	date := strings.TrimSpace(in.AuditDate)
@@ -75,22 +82,21 @@ func (s *Store) UpsertExternalAudit(ctx context.Context, in UpsertExternalAuditI
 			return ExternalAudit{}, err
 		}
 	}
-	status := strings.TrimSpace(in.Status)
-	if status == "" {
-		status = "scheduled"
-	}
 	var out ExternalAudit
 	err := s.pool.QueryRow(ctx, `
 		INSERT INTO qc_external_audits (business_id, audit_type, body, description, audit_date, status)
-		VALUES ($1,$2,$3,$4,$5::date,$6)
+		VALUES (
+			$1, $2, COALESCE($3::text, ''), COALESCE($4::text, ''),
+			$5::date, COALESCE($6::text, 'scheduled')
+		)
 		ON CONFLICT (business_id) DO UPDATE SET
 			audit_type = EXCLUDED.audit_type,
-			body = EXCLUDED.body,
-			description = EXCLUDED.description,
+			body = COALESCE($3::text, qc_external_audits.body),
+			description = COALESCE($4::text, qc_external_audits.description),
 			audit_date = EXCLUDED.audit_date,
-			status = EXCLUDED.status
+			status = COALESCE($6::text, qc_external_audits.status)
 		RETURNING business_id, audit_type, body, description, audit_date::text, status, created_at`,
-		id, auditType, strings.TrimSpace(in.Body), strings.TrimSpace(in.Description), date, status,
+		id, auditType, trimOptional(in.Body), trimOptional(in.Description), date, blankToNil(in.Status),
 	).Scan(&out.BusinessID, &out.AuditType, &out.Body, &out.Description, &out.AuditDate, &out.Status, &out.CreatedAt)
 	return out, err
 }
