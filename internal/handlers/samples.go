@@ -39,11 +39,12 @@ func (h *QC) GetSample(c *gin.Context) {
 // nil leaves the column alone; a body with nothing set is a 400.
 func (h *QC) PatchSample(c *gin.Context) {
 	var body struct {
-		Status       *string `json:"status"`
-		SampleType   *string `json:"sample_type"`
-		Priority     *string `json:"priority"`
-		AssignedTech *string `json:"assigned_tech"`
-		Notes        *string `json:"notes"`
+		Status       *string        `json:"status"`
+		SampleType   *string        `json:"sample_type"`
+		Priority     *string        `json:"priority"`
+		AssignedTech *string        `json:"assigned_tech"`
+		Notes        *string        `json:"notes"`
+		Attrs        map[string]any `json:"attrs"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -51,7 +52,7 @@ func (h *QC) PatchSample(c *gin.Context) {
 	}
 	sample, err := h.Store.UpdateSample(c.Request.Context(), c.Param("id"), store.SamplePatch{
 		Status: body.Status, SampleType: body.SampleType, Priority: body.Priority,
-		AssignedTech: body.AssignedTech, Notes: body.Notes,
+		AssignedTech: body.AssignedTech, Notes: body.Notes, Attrs: body.Attrs,
 	})
 	if respondStoreErr(c, err) {
 		return
