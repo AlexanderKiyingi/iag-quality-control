@@ -272,3 +272,62 @@ func TestHoldEventVocabulary(t *testing.T) {
 		}
 	}
 }
+
+// Migration 013.
+func TestLabMeasurementValidation(t *testing.T) {
+	s := &Store{}
+	ctx := context.Background()
+	for _, tc := range []struct {
+		name string
+		in   CreateLabMeasurementInput
+	}{
+		{"no sample", CreateLabMeasurementInput{Parameter: "caffeine"}},
+		{"no parameter", CreateLabMeasurementInput{SampleBusinessID: "SMP-26-0001"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := s.CreateLabMeasurement(ctx, tc.in); !errors.Is(err, ErrBadInput) {
+				t.Fatalf("got %v, want ErrBadInput", err)
+			}
+		})
+	}
+}
+
+/*
+The rollup map decides what keeps feeding SPC, the dashboard and the CoA PDF.
+
+A parameter wrongly mapped writes a caffeine reading into the moisture column of
+a batch summary that the CoA is printed from; a known parameter wrongly left
+unmapped silently stops feeding four consumers. Both are quiet, so both are
+pinned here.
+*/
+func TestMeasurementRollupField(t *testing.T) {
+	for in, want := range map[string]string{
+		"moisture": "moisture", "Moisture %": "moisture", "moisture_pct": "moisture",
+		"water activity": "water_activity", "aw": "water_activity",
+		"cup score": "cup_score", "SCA score": "cup_score", "Total score": "cup_score",
+		"defects": "defects", "Defect count": "defects",
+		// Everything else is a measurement and nothing more — that is the point
+		// of the table.
+		"caffeine": "", "chlorogenic acid": "", "pH": "", "": "",
+	} {
+		if got := MeasurementRollupField(in); got != want {
+			t.Errorf("MeasurementRollupField(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestParseMeasurementValue(t *testing.T) {
+	if got := parseMeasurementValue("11.5"); got == nil || *got != 11.5 {
+		t.Errorf("plain number not parsed: %v", got)
+	}
+	if got := parseMeasurementValue("11.5%"); got == nil || *got != 11.5 {
+		t.Errorf("trailing percent not handled: %v", got)
+	}
+	// Real results are often not numbers. They must still be recordable, with
+	// value_text keeping what was typed.
+	for _, in := range []string{"<0.1", "trace", "pass", "", "  "} {
+		if got := parseMeasurementValue(in); got != nil {
+			t.Errorf("parseMeasurementValue(%q) = %v, want nil", in, *got)
+		}
+	}
+}

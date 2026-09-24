@@ -321,6 +321,73 @@ func TestUpsertGuardsAgainstRealPostgres(t *testing.T) {
 		}
 	})
 
+	t.Run("a measurement records any analyte and mirrors only the known ones", func(t *testing.T) {
+		batch := "BATCH-" + run
+		sample, err := s.CreateSample(ctx, CreateSampleInput{
+			BatchBusinessID: batch, SampleID: id("SMP"), SampleType: "green",
+		})
+		if err != nil {
+			t.Fatalf("create sample: %v", err)
+		}
+
+		// The case the table exists for: before it, this was stored as
+		// moisture_pct and read back labelled "moisture".
+		caffeine, err := s.CreateLabMeasurement(ctx, CreateLabMeasurementInput{
+			SampleBusinessID: sample.BusinessID, Parameter: "caffeine",
+			Value: "1.2", Unit: "mg/g", SpecLimit: "0.8-1.5", Analyst: "A. Analyst",
+		})
+		if err != nil {
+			t.Fatalf("caffeine measurement: %v", err)
+		}
+		if caffeine.Parameter != "caffeine" || caffeine.Unit != "mg/g" {
+			t.Errorf("analyte not stored as itself: %q %q", caffeine.Parameter, caffeine.Unit)
+		}
+		if caffeine.ValueNum == nil || *caffeine.ValueNum != 1.2 {
+			t.Errorf("numeric value not parsed: %v", caffeine.ValueNum)
+		}
+		if caffeine.BatchBusinessID != batch {
+			t.Errorf("batch not resolved from the sample: %q", caffeine.BatchBusinessID)
+		}
+		// An unknown analyte must not touch the rollup.
+		if summary, err := s.GetBatchLabSummary(ctx, batch); err == nil && summary.Moisture != nil {
+			t.Errorf("caffeine leaked into the moisture rollup: %v", *summary.Moisture)
+		}
+
+		// A known metric must still feed the rollup, or SPC, the dashboard and
+		// the CoA PDF quietly stop being fed.
+		if _, err := s.CreateLabMeasurement(ctx, CreateLabMeasurementInput{
+			SampleBusinessID: sample.BusinessID, Parameter: "Moisture %", Value: "11.5", Unit: "%",
+		}); err != nil {
+			t.Fatalf("moisture measurement: %v", err)
+		}
+		summary, err := s.GetBatchLabSummary(ctx, batch)
+		if err != nil {
+			t.Fatalf("rollup: %v", err)
+		}
+		if summary.Moisture == nil || *summary.Moisture != 11.5 {
+			t.Errorf("moisture did not reach the rollup: %v", summary.Moisture)
+		}
+
+		// A non-numeric result is still a result.
+		trace, err := s.CreateLabMeasurement(ctx, CreateLabMeasurementInput{
+			SampleBusinessID: sample.BusinessID, Parameter: "ochratoxin", Value: "<0.1",
+		})
+		if err != nil {
+			t.Fatalf("non-numeric measurement: %v", err)
+		}
+		if trace.ValueText != "<0.1" || trace.ValueNum != nil {
+			t.Errorf("non-numeric value mishandled: text=%q num=%v", trace.ValueText, trace.ValueNum)
+		}
+
+		list, err := s.ListLabMeasurements(ctx, sample.BusinessID, "", 0)
+		if err != nil {
+			t.Fatalf("list: %v", err)
+		}
+		if len(list) != 3 {
+			t.Errorf("listed %d measurements, want 3", len(list))
+		}
+	})
+
 	t.Run("stability study keeps the columns a partial save omitted", func(t *testing.T) {
 		stb := id("STB")
 		if _, err := s.UpsertStabilityStudy(ctx, UpsertStabilityStudyInput{
