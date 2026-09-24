@@ -14,13 +14,14 @@ import (
 
 func (h *QC) PostSample(c *gin.Context) {
 	var body struct {
-		BatchBusinessID string   `json:"batch_business_id" binding:"required"`
-		SampleID        string   `json:"sample_id"`
-		SampleType      string   `json:"sample_type"`
-		Priority        string   `json:"priority"`
-		AssignedTech    string   `json:"assigned_tech"`
-		TestsRequired   []string `json:"tests_required"`
-		Notes           string   `json:"notes"`
+		BatchBusinessID string         `json:"batch_business_id" binding:"required"`
+		SampleID        string         `json:"sample_id"`
+		SampleType      string         `json:"sample_type"`
+		Priority        string         `json:"priority"`
+		AssignedTech    string         `json:"assigned_tech"`
+		TestsRequired   []string       `json:"tests_required"`
+		Notes           string         `json:"notes"`
+		Attrs           map[string]any `json:"attrs"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -41,6 +42,7 @@ func (h *QC) PostSample(c *gin.Context) {
 		AssignedTech:    body.AssignedTech,
 		TestsRequired:   body.TestsRequired,
 		Notes:           body.Notes,
+		Attrs:           body.Attrs,
 	})
 	if respondStoreErr(c, err) {
 		return
@@ -123,8 +125,8 @@ func (h *QC) PostCoA(c *gin.Context) {
 	var body struct {
 		LotBusinessID   string `json:"lot_business_id" binding:"required"`
 		BatchBusinessID string `json:"batch_business_id"`
-		CoaNumber     string `json:"coa_number" binding:"required"`
-		DocumentRef   string `json:"document_ref"`
+		CoaNumber       string `json:"coa_number" binding:"required"`
+		DocumentRef     string `json:"document_ref"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -140,8 +142,8 @@ func (h *QC) PostCoA(c *gin.Context) {
 	coa, err := h.Store.CreateCoA(c.Request.Context(), store.CreateCoAInput{
 		LotBusinessID:   body.LotBusinessID,
 		BatchBusinessID: body.BatchBusinessID,
-		CoaNumber:     body.CoaNumber,
-		DocumentRef:   body.DocumentRef,
+		CoaNumber:       body.CoaNumber,
+		DocumentRef:     body.DocumentRef,
 		IssuedBy:        middleware.ActorLabel(c),
 	})
 	if respondStoreErr(c, err) {
