@@ -247,6 +247,12 @@ paths:
       summary: List stability studies
     post:
       summary: Upsert stability study
+  /api/v1/lab/measurements:
+    get:
+      summary: List parameterised lab measurements
+  /api/v1/samples/{id}/measurements:
+    post:
+      summary: Record a parameterised lab measurement for a sample
   /api/v1/non-conformances:
     get:
       summary: List non-conformances

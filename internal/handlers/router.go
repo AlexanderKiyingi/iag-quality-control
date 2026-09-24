@@ -129,6 +129,13 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 
 		v1.POST("/lab/results", middleware.RequirePermission("qc.record_tests"), qc.PostLabResult)
 
+		// Parameterised measurements (013). /lab/results above is a six-metric
+		// batch rollup, not a generic result endpoint; this is the one that can
+		// record an arbitrary analyte. Recording is nested under the sample like
+		// the other test routes, so it reuses the same ":id" wildcard name.
+		v1.GET("/lab/measurements", middleware.RequirePermission("qc.view_lab_summary"), qc.ListLabMeasurements)
+		v1.POST("/samples/:id/measurements", middleware.RequirePermission("qc.record_tests"), qc.PostLabMeasurement)
+
 		v1.GET("/certification/pending", middleware.RequirePermission("qc.approve_certification"), qc.ListPendingCertifications)
 		v1.POST("/certification/requests", middleware.RequirePermission("qc.request_certification"), qc.CreateCertificationRequest)
 		v1.GET("/certification/requests/:id", middleware.RequirePermission("qc.request_certification"), qc.GetCertificationRequest)
