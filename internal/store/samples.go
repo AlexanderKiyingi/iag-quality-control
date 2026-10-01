@@ -45,13 +45,14 @@ func (s *Store) CreateSample(ctx context.Context, in CreateSampleInput) (Sample,
 	err = s.pool.QueryRow(ctx, `
 		INSERT INTO qc_samples (
 			business_id, batch_business_id, sample_type, status, priority,
-			assigned_tech, tests_required, notes, attrs
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9::jsonb,'{}'::jsonb))
+			assigned_tech, tests_required, notes, attrs, received_at
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9::jsonb,'{}'::jsonb),
+		          COALESCE(NULLIF($10::text,'')::timestamptz, NOW()))
 		RETURNING business_id, batch_business_id, sample_type, status, priority,
 		          assigned_tech, tests_required, notes, attrs, received_at, completed_at, created_at`,
 		businessID, bid, strings.TrimSpace(in.SampleType), status, priority,
 		strings.TrimSpace(in.AssignedTech), testsJSON, strings.TrimSpace(in.Notes),
-		attrsOptional(in.Attrs),
+		attrsOptional(in.Attrs), strings.TrimSpace(in.ReceivedAt),
 	).Scan(
 		&out.BusinessID, &out.BatchBusinessID, &out.SampleType, &out.Status, &out.Priority,
 		&out.AssignedTech, &testsJSON, &out.Notes, &attrs, &out.ReceivedAt, &out.CompletedAt, &out.CreatedAt,

@@ -114,6 +114,7 @@ backwards.
 | GET/POST | `/api/v1/in-process-checks` | In-process quality checks; `?batch=&status=&limit=` |
 | GET/POST | `/api/v1/release-decisions` | Batch release decisions; `?batch=&decision=&limit=` |
 | GET/POST | `/api/v1/hold-events` | Hold and release log (append-only); `?batch=&status=&limit=` |
+| GET/POST | `/api/v1/incoming-inspections` | Supplier lots checked on arrival; `?lot=&status=&limit=` |
 
 A non-conformance is the finding and a CAPA is the response, linked by
 `qc_capas.source_ref` carrying the NC's `business_id`. The hold log is
@@ -123,6 +124,26 @@ append-only: re-posting an existing `business_id` is **409**, not an update.
 conditional) or `qc.batch.held` (hold, reject, rework) — but **only when the
 decision is new or has changed**, since the route is an upsert and a batch is
 released once. An unrecognised decision emits nothing rather than guessing.
+
+### Deleting
+
+`DELETE` exists on exactly five paths, and only while the row is still planning
+data nobody has acted on:
+
+| Path | Deletable while status is |
+|---|---|
+| `/api/v1/lab/methods/{id}` | `draft` |
+| `/api/v1/lab/requests/{id}` | `draft`, `open` |
+| `/api/v1/stability-studies/{id}` | `planned` |
+| `/api/v1/in-process-checks/{id}` | `open` |
+| `/api/v1/incoming-inspections/{id}` | `open` |
+
+Anything further on answers **409** naming the alternative: set the row's status
+to void or cancelled, which leaves the history intact. Samples, physical and
+chemical tests, cupping sessions, measurements, calibrations, CoAs, certification
+requests, custody logs, hold events, release decisions, CAPAs, non-conformances,
+compliance logs and external audits have **no** DELETE — a LIMS whose results can
+be removed is not evidence of anything. The allow-list is pinned by a test.
 
 ### SCM context proxies (read-only)
 
