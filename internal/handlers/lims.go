@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"strings"
+
 	"net/http"
 	"strconv"
 
@@ -93,10 +95,18 @@ func (h *QC) CreateCustodyLog(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	// A custody entry with no actor is not evidence of anything, and the caller
+	// is already authenticated — so the signed-in principal stands in when the
+	// body does not name someone else. Certification requests have derived
+	// requested_by this way since they were written.
+	actor := strings.TrimSpace(body.Actor)
+	if actor == "" {
+		actor = middleware.ActorLabel(c)
+	}
 	item, err := h.Store.CreateCustodyLog(c.Request.Context(), store.CreateCustodyLogInput{
 		SampleBusinessID: c.Param("id"),
 		Action:           body.Action,
-		Actor:            body.Actor,
+		Actor:            actor,
 		Location:         body.Location,
 		Notes:            body.Notes,
 	})
