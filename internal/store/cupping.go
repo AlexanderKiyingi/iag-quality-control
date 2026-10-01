@@ -47,28 +47,32 @@ func (s *Store) CreateCupping(ctx context.Context, in CreateCuppingInput) (Cuppi
 	sessionDate := time.Now().UTC().Format("2006-01-02")
 
 	var out CuppingSession
+	var cuppingAttrs []byte
 	err = s.pool.QueryRow(ctx, `
 		INSERT INTO qc_cupping_sessions (
 			business_id, sample_business_id, batch_business_id, session_date, scorers,
 			fragrance, flavor, aftertaste, acidity, body, balance, uniformity, cleancup, sweetness, overall,
-			defect_cat1, defect_cat2, total_score, notes
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+			defect_cat1, defect_cat2, total_score, notes, attrs
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,
+		          COALESCE($20::jsonb,'{}'::jsonb))
 		RETURNING business_id, sample_business_id, batch_business_id, session_date::text, scorers,
 		          fragrance, flavor, aftertaste, acidity, body, balance, uniformity, cleancup, sweetness, overall,
-		          defect_cat1, defect_cat2, total_score, notes, status`,
+		          defect_cat1, defect_cat2, total_score, notes, status, attrs`,
 		businessID, sample.BusinessID, sample.BatchBusinessID, sessionDate, scorersJSON,
 		in.Fragrance, in.Flavor, in.Aftertaste, in.Acidity, in.Body, in.Balance,
 		in.Uniformity, in.CleanCup, in.Sweetness, in.Overall,
 		in.DefectCat1, in.DefectCat2, total, strings.TrimSpace(in.Notes),
+		attrsOptional(in.Attrs),
 	).Scan(
 		&out.BusinessID, &out.SampleBusinessID, &out.BatchBusinessID, &out.SessionDate, &scorersJSON,
 		&out.Fragrance, &out.Flavor, &out.Aftertaste, &out.Acidity, &out.Body, &out.Balance,
 		&out.Uniformity, &out.CleanCup, &out.Sweetness, &out.Overall,
-		&out.DefectCat1, &out.DefectCat2, &out.TotalScore, &out.Notes, &out.Status,
+		&out.DefectCat1, &out.DefectCat2, &out.TotalScore, &out.Notes, &out.Status, &cuppingAttrs,
 	)
 	if err != nil {
 		return CuppingSession{}, fmt.Errorf("create cupping: %w", err)
 	}
+	out.Attrs = attrsMap(cuppingAttrs)
 	_ = json.Unmarshal(scorersJSON, &out.Scorers)
 	out.Grade = grade
 

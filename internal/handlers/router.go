@@ -179,6 +179,18 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 		v1.GET("/non-conformances", middleware.RequirePermission("qc.view_compliance"), qc.ListNonConformances)
 		v1.POST("/non-conformances", middleware.RequirePermission("qc.change_compliance"), qc.UpsertNonConformance)
 		v1.GET("/non-conformances/:id", middleware.RequirePermission("qc.view_compliance"), qc.GetNonConformance)
+		// Deletes exist only for planning data that has not been acted on; the
+		// store refuses anything else with a 409 naming the alternative. The
+		// quality record — samples, tests, cupping, measurements, calibrations,
+		// CoAs, custody, holds, release decisions, CAPAs, NCs — has no DELETE
+		// on purpose.
+		v1.DELETE("/lab/methods/:id", middleware.RequirePermission("qc.change_instruments"), qc.deleteFrom("qc_lab_methods"))
+		v1.DELETE("/lab/requests/:id", middleware.RequirePermission("qc.add_sample"), qc.deleteFrom("qc_lab_requests"))
+		v1.DELETE("/stability-studies/:id", middleware.RequirePermission("qc.add_sample"), qc.deleteFrom("qc_stability_studies"))
+		v1.DELETE("/in-process-checks/:id", middleware.RequirePermission("qc.change_compliance"), qc.deleteFrom("qc_in_process_checks"))
+		v1.DELETE("/incoming-inspections/:id", middleware.RequirePermission("qc.change_compliance"), qc.deleteFrom("qc_incoming_inspections"))
+		v1.GET("/incoming-inspections", middleware.RequirePermission("qc.view_compliance"), qc.ListIncomingInspections)
+		v1.POST("/incoming-inspections", middleware.RequirePermission("qc.change_compliance"), qc.UpsertIncomingInspection)
 		v1.GET("/in-process-checks", middleware.RequirePermission("qc.view_compliance"), qc.ListInProcessChecks)
 		v1.POST("/in-process-checks", middleware.RequirePermission("qc.change_compliance"), qc.UpsertInProcessCheck)
 		v1.GET("/release-decisions", middleware.RequirePermission("qc.view_release_decisions"), qc.ListReleaseDecisions)

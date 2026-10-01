@@ -14,20 +14,21 @@ import (
 
 func (h *QC) PostCupping(c *gin.Context) {
 	var body struct {
-		Scorers    []string `json:"scorers"`
-		Fragrance  float64  `json:"fragrance"`
-		Flavor     float64  `json:"flavor"`
-		Aftertaste float64  `json:"aftertaste"`
-		Acidity    float64  `json:"acidity"`
-		Body       float64  `json:"body"`
-		Balance    float64  `json:"balance"`
-		Uniformity float64  `json:"uniformity"`
-		CleanCup   float64  `json:"cleancup"`
-		Sweetness  float64  `json:"sweetness"`
-		Overall    float64  `json:"overall"`
-		DefectCat1 int      `json:"defect_cat1"`
-		DefectCat2 int      `json:"defect_cat2"`
-		Notes      string   `json:"notes"`
+		Scorers    []string       `json:"scorers"`
+		Fragrance  float64        `json:"fragrance"`
+		Flavor     float64        `json:"flavor"`
+		Aftertaste float64        `json:"aftertaste"`
+		Acidity    float64        `json:"acidity"`
+		Body       float64        `json:"body"`
+		Balance    float64        `json:"balance"`
+		Uniformity float64        `json:"uniformity"`
+		CleanCup   float64        `json:"cleancup"`
+		Sweetness  float64        `json:"sweetness"`
+		Overall    float64        `json:"overall"`
+		DefectCat1 int            `json:"defect_cat1"`
+		DefectCat2 int            `json:"defect_cat2"`
+		Notes      string         `json:"notes"`
+		Attrs      map[string]any `json:"attrs"`
 	}
 	if err := bindJSONCoerced(c, &body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -49,6 +50,7 @@ func (h *QC) PostCupping(c *gin.Context) {
 		DefectCat1:       body.DefectCat1,
 		DefectCat2:       body.DefectCat2,
 		Notes:            body.Notes,
+		Attrs:            body.Attrs,
 	})
 	if respondStoreErr(c, err) {
 		return

@@ -22,6 +22,7 @@ func (h *QC) PostSample(c *gin.Context) {
 		TestsRequired   []string       `json:"tests_required"`
 		Notes           string         `json:"notes"`
 		Attrs           map[string]any `json:"attrs"`
+		ReceivedAt      string         `json:"received_at"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -43,6 +44,7 @@ func (h *QC) PostSample(c *gin.Context) {
 		TestsRequired:   body.TestsRequired,
 		Notes:           body.Notes,
 		Attrs:           body.Attrs,
+		ReceivedAt:      body.ReceivedAt,
 	})
 	if respondStoreErr(c, err) {
 		return
