@@ -331,3 +331,52 @@ func TestParseMeasurementValue(t *testing.T) {
 		}
 	}
 }
+
+// Migration 015.
+func TestIncomingInspectionRequiresASourceLot(t *testing.T) {
+	s := &Store{}
+	if _, err := s.UpsertIncomingInspection(context.Background(),
+		UpsertIncomingInspectionInput{BusinessID: "IIN-26-0001"}); !errors.Is(err, ErrBadInput) {
+		t.Fatalf("got %v, want ErrBadInput", err)
+	}
+}
+
+/*
+The delete allow-list is the whole safety property, so it is pinned.
+
+A LIMS whose results can be removed is not evidence of anything. Only planning
+data that has not been acted on may go; everything that forms the audit trail
+must be refused before any SQL runs.
+*/
+func TestOnlyPlanningRegistersAreDeletable(t *testing.T) {
+	s := &Store{}
+	ctx := context.Background()
+
+	for _, table := range []string{
+		"qc_samples", "qc_physical_tests", "qc_chemical_tests", "qc_cupping_sessions",
+		"qc_lab_measurements", "qc_instrument_calibrations", "qc_coa",
+		"qc_certification_requests", "qc_custody_logs", "qc_hold_events",
+		"qc_release_decisions", "qc_capas", "qc_non_conformances",
+		"qc_compliance_logs", "qc_external_audits", "qc_instruments", "qc_technicians",
+	} {
+		if err := s.DeleteRegisterRow(ctx, table, "X-1"); !errors.Is(err, ErrBadInput) {
+			t.Errorf("%s is deletable — it is part of the quality record and must not be", table)
+		}
+	}
+
+	// And the four that are, refuse a blank id before touching the pool.
+	for table := range deletableWhileStatus {
+		if err := s.DeleteRegisterRow(ctx, table, "  "); !errors.Is(err, ErrBadInput) {
+			t.Errorf("%s accepted a blank id: %v", table, err)
+		}
+	}
+}
+
+func TestContainsFold(t *testing.T) {
+	if !containsFold([]string{"draft"}, " Draft ") {
+		t.Error("status comparison should ignore case and padding")
+	}
+	if containsFold([]string{"draft"}, "approved") {
+		t.Error("approved must not match draft")
+	}
+}

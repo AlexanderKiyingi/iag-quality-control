@@ -75,6 +75,10 @@ type CuppingSession struct {
 	Grade            string   `json:"grade"`
 	Notes            string   `json:"notes"`
 	Status           string   `json:"status"`
+	// Migration 015. The trial's experimental context — hypothesis, the changed
+	// variable, the control it was compared against, the control score, yield
+	// and worksheet attachments. The SCA sheet above has no room for any of it.
+	Attrs map[string]any `json:"attrs"`
 }
 
 type BatchLabSummary struct {
@@ -109,6 +113,10 @@ type CreateSampleInput struct {
 	Notes           string
 	SampleID        string
 	Attrs           map[string]any
+	// Migration 015. The intake form marks this required and the column has
+	// existed since 002, but it was never accepted — every sample was stamped
+	// NOW(), so a lab entering yesterday's intake could not say so.
+	ReceivedAt string
 }
 
 type CreatePhysicalTestInput struct {
@@ -153,6 +161,7 @@ type CreateCuppingInput struct {
 	DefectCat1       int
 	DefectCat2       int
 	Notes            string
+	Attrs            map[string]any
 }
 
 type UpsertLabSummaryInput struct {

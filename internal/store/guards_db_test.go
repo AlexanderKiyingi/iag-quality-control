@@ -423,6 +423,103 @@ func TestUpsertGuardsAgainstRealPostgres(t *testing.T) {
 		}
 	})
 
+	t.Run("a cupping session keeps its experimental context, and a sample its intake date", func(t *testing.T) {
+		batch := "BATCH-015-" + run
+		sample, err := s.CreateSample(ctx, CreateSampleInput{
+			BatchBusinessID: batch, SampleID: id("SMP15"),
+			// The intake form marks this required; it used to be ignored and
+			// every sample was stamped NOW().
+			ReceivedAt: "2026-09-20T08:30:00Z",
+		})
+		if err != nil {
+			t.Fatalf("create sample: %v", err)
+		}
+		if got := sample.ReceivedAt.UTC().Format("2006-01-02"); got != "2026-09-20" {
+			t.Errorf("received_at was not honoured: %s", got)
+		}
+
+		cup, err := s.CreateCupping(ctx, CreateCuppingInput{
+			SampleBusinessID: sample.BusinessID,
+			Fragrance:        8, Flavor: 8, Aftertaste: 7.5, Acidity: 8, Body: 7.5,
+			Balance: 8, Uniformity: 10, CleanCup: 10, Sweetness: 10, Overall: 8,
+			Notes: "floral",
+			Attrs: map[string]any{
+				"hypothesis": "longer rest improves sweetness",
+				"variable":   "rest 14d vs 7d",
+				"control":    "SMP-CONTROL-1",
+			},
+		})
+		if err != nil {
+			t.Fatalf("create cupping: %v", err)
+		}
+		// A real ten-attribute sheet, not one number against nine zeros.
+		if cup.TotalScore != 85 {
+			t.Errorf("total score = %v, want 85 from the full sheet", cup.TotalScore)
+		}
+		if cup.Grade != "Specialty" {
+			t.Errorf("grade = %q, want Specialty", cup.Grade)
+		}
+		if cup.Attrs["hypothesis"] != "longer rest improves sweetness" {
+			t.Errorf("experimental context not stored: %v", cup.Attrs)
+		}
+	})
+
+	t.Run("incoming inspections record a supplier lot", func(t *testing.T) {
+		iin := id("IIN")
+		moisture := 11.8
+		size := 300
+		defects := 4
+		created, err := s.UpsertIncomingInspection(ctx, UpsertIncomingInspectionInput{
+			BusinessID: iin, SourceLot: "LOT-" + run, ItemRef: ptr("Arabica AA"),
+			SampleSize: &size, MoisturePct: &moisture, DefectCount: &defects,
+			Inspector: ptr("A. Inspector"), Result: ptr("accept"), Status: ptr("released"),
+		})
+		if err != nil {
+			t.Fatalf("create: %v", err)
+		}
+		if created.MoisturePct == nil || *created.MoisturePct != 11.8 || created.SampleSize != 300 {
+			t.Errorf("readings not stored: moisture=%v size=%d", created.MoisturePct, created.SampleSize)
+		}
+		// Partial save preserves, like every other register.
+		got, err := s.UpsertIncomingInspection(ctx, UpsertIncomingInspectionInput{
+			BusinessID: iin, SourceLot: "LOT-" + run, Notes: ptr("re-checked"),
+		})
+		if err != nil {
+			t.Fatalf("partial save: %v", err)
+		}
+		if got.SampleSize != 300 || got.Inspector != "A. Inspector" || got.Status != "released" {
+			t.Errorf("partial save blanked a column: size=%d inspector=%q status=%q",
+				got.SampleSize, got.Inspector, got.Status)
+		}
+	})
+
+	t.Run("planning data deletes, the quality record does not", func(t *testing.T) {
+		// A draft method may go.
+		lm := id("LMDEL")
+		if _, err := s.UpsertLabMethod(ctx, UpsertLabMethodInput{
+			BusinessID: lm, Name: "Scratch method", Status: ptr("draft"),
+		}); err != nil {
+			t.Fatalf("create method: %v", err)
+		}
+		if err := s.DeleteRegisterRow(ctx, "qc_lab_methods", lm); err != nil {
+			t.Fatalf("a draft method should be deletable: %v", err)
+		}
+		if err := s.DeleteRegisterRow(ctx, "qc_lab_methods", lm); !errors.Is(err, ErrNotFound) {
+			t.Errorf("second delete should be ErrNotFound, got %v", err)
+		}
+
+		// An approved one may not — it is referenced by results.
+		lm2 := id("LMKEEP")
+		if _, err := s.UpsertLabMethod(ctx, UpsertLabMethodInput{
+			BusinessID: lm2, Name: "Published method", Status: ptr("approved"),
+		}); err != nil {
+			t.Fatalf("create method: %v", err)
+		}
+		if err := s.DeleteRegisterRow(ctx, "qc_lab_methods", lm2); !errors.Is(err, ErrConflict) {
+			t.Errorf("an approved method must be refused, got %v", err)
+		}
+	})
+
 	t.Run("stability study keeps the columns a partial save omitted", func(t *testing.T) {
 		stb := id("STB")
 		if _, err := s.UpsertStabilityStudy(ctx, UpsertStabilityStudyInput{

@@ -276,3 +276,23 @@ paths:
       summary: List hold and release events
     post:
       summary: Append a hold or release event
+  /api/v1/incoming-inspections:
+    get:
+      summary: List incoming supplier lot inspections
+    post:
+      summary: Upsert an incoming inspection
+  /api/v1/incoming-inspections/{id}:
+    delete:
+      summary: Delete an incoming inspection (only while open)
+  /api/v1/lab/methods/{id}:
+    delete:
+      summary: Delete a lab method (only while draft)
+  /api/v1/lab/requests/{id}:
+    delete:
+      summary: Delete a lab request (only while draft or open)
+  /api/v1/stability-studies/{id}:
+    delete:
+      summary: Delete a stability study (only while planned)
+  /api/v1/in-process-checks/{id}:
+    delete:
+      summary: Delete an in-process check (only while open)
