@@ -107,6 +107,12 @@ func coerceScalarStrings(t reflect.Type, m map[string]any) {
 			}
 		}
 		switch ft.Kind() {
+		case reflect.String:
+			// The reverse direction: a field kept as text so "" can mean
+			// "clear" (spec limits, 016) still accepts a JSON number.
+			if n, ok := val.(float64); ok {
+				m[name] = strconv.FormatFloat(n, 'f', -1, 64)
+			}
 		case reflect.Struct:
 			if nested, ok := val.(map[string]any); ok {
 				coerceScalarStrings(ft, nested)

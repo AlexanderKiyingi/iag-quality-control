@@ -197,6 +197,12 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 		v1.POST("/release-decisions", middleware.RequirePermission("qc.decide_release"), qc.UpsertReleaseDecision)
 		v1.GET("/hold-events", middleware.RequirePermission("qc.view_release_decisions"), qc.ListHoldEvents)
 		v1.POST("/hold-events", middleware.RequirePermission("qc.decide_release"), qc.CreateHoldEvent)
+		// Specification limits (016). Changing one gets its own permission: a
+		// spec decides what is automatically raised as a non-conformance and
+		// held, so it must be grantable apart from recording results.
+		v1.GET("/specifications", middleware.RequirePermission("qc.view_specifications"), qc.ListSpecifications)
+		v1.POST("/specifications", middleware.RequirePermission("qc.change_specifications"), qc.UpsertSpecification)
+		v1.GET("/specifications/:id", middleware.RequirePermission("qc.view_specifications"), qc.GetSpecification)
 		v1.GET("/instruments", middleware.RequirePermission("qc.view_instruments"), qc.ListInstruments)
 		v1.POST("/instruments", middleware.RequirePermission("qc.change_instruments"), qc.UpsertInstrument)
 		v1.POST("/instruments/sync", middleware.RequirePermission("qc.sync_instruments"), qc.SyncInstruments)

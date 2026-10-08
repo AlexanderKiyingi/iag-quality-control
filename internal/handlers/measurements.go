@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"errors"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -40,6 +42,11 @@ func (h *QC) PostLabMeasurement(c *gin.Context) {
 		Attachments string         `json:"attachments"`
 		ReportedAt  string         `json:"reported_at"`
 		Attrs       map[string]any `json:"attrs"`
+		// 016: which spec judges the reading, and why the analyst disagrees
+		// with the verdict when they do.
+		Stage          string `json:"stage"`
+		Grade          string `json:"grade"`
+		OverrideReason string `json:"override_reason"`
 	}
 	// Value stays a string all the way down: plenty of real results are "<0.1"
 	// or "pass", and the store fills value_num only when the text parses.
@@ -62,7 +69,15 @@ func (h *QC) PostLabMeasurement(c *gin.Context) {
 		Attachments:      body.Attachments,
 		ReportedAt:       body.ReportedAt,
 		Attrs:            body.Attrs,
+		Stage:            body.Stage,
+		Grade:            body.Grade,
+		OverrideReason:   body.OverrideReason,
+		Actor:            actorOf(c),
 	})
+	if errors.Is(err, store.ErrAutoActions) {
+		log.Printf("quality-control: measurement %s: %v", item.BusinessID, err)
+		err = nil
+	}
 	if respondStoreErr(c, err) {
 		return
 	}
@@ -70,5 +85,6 @@ func (h *QC) PostLabMeasurement(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not record lab measurement"})
 		return
 	}
+	h.announceAutoActions(c.Request.Context(), item.AutoActions, item.BusinessID)
 	c.JSON(http.StatusOK, item)
 }
