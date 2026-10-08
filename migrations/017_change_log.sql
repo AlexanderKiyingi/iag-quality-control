@@ -78,8 +78,11 @@ BEGIN
         diff := old_j;
     END IF;
 
+    -- Most tables key on business_id; the CoA on coa_number; a cupping sheet
+    -- (018) is filed under its session.
     rec_id := COALESCE(new_j ->> 'business_id', old_j ->> 'business_id',
-                       new_j ->> 'coa_number', old_j ->> 'coa_number', '');
+                       new_j ->> 'coa_number', old_j ->> 'coa_number',
+                       new_j ->> 'session_business_id', old_j ->> 'session_business_id', '');
 
     INSERT INTO qc_change_log (table_name, business_id, op, changes, actor)
     VALUES (TG_TABLE_NAME, rec_id, TG_OP, diff,

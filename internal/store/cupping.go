@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -22,6 +23,13 @@ func (s *Store) CreateCupping(ctx context.Context, in CreateCuppingInput) (Cuppi
 	if err != nil {
 		return CuppingSession{}, err
 	}
+	sheets, err := normalizePanel(in.Scores)
+	if err != nil {
+		return CuppingSession{}, err
+	}
+	if len(sheets) > 0 {
+		in = withPanelMean(in, sheets)
+	}
 	scores := map[string]float64{
 		"fragrance":  in.Fragrance,
 		"flavor":     in.Flavor,
@@ -35,6 +43,15 @@ func (s *Store) CreateCupping(ctx context.Context, in CreateCuppingInput) (Cuppi
 		"overall":    in.Overall,
 	}
 	total := domain.CalcSCATotal(scores, in.DefectCat1, in.DefectCat2)
+	if len(sheets) > 0 {
+		// The panel's score is the mean of the evaluators' totals. Recomputing
+		// it from the mean sheet would round the defect counts first.
+		total = panelMeanTotal(sheets)
+	}
+	sheetsJSON, err := json.Marshal(sheets)
+	if err != nil {
+		return CuppingSession{}, err
+	}
 	grade := domain.SCATier(total)
 	scorers := in.Scorers
 	if scorers == nil {
@@ -48,21 +65,41 @@ func (s *Store) CreateCupping(ctx context.Context, in CreateCuppingInput) (Cuppi
 
 	var out CuppingSession
 	var cuppingAttrs []byte
+	// Session and sheets in one statement: the store has no transactions, and a
+	// session whose sheets failed to save would report a panel mean nobody can
+	// see the parts of. The sheets' FK to the session is checked at the end of
+	// the statement, after the session row exists.
 	err = s.pool.QueryRow(ctx, `
-		INSERT INTO qc_cupping_sessions (
-			business_id, sample_business_id, batch_business_id, session_date, scorers,
-			fragrance, flavor, aftertaste, acidity, body, balance, uniformity, cleancup, sweetness, overall,
-			defect_cat1, defect_cat2, total_score, notes, attrs
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,
-		          COALESCE($20::jsonb,'{}'::jsonb))
-		RETURNING business_id, sample_business_id, batch_business_id, session_date::text, scorers,
-		          fragrance, flavor, aftertaste, acidity, body, balance, uniformity, cleancup, sweetness, overall,
-		          defect_cat1, defect_cat2, total_score, notes, status, attrs`,
+		WITH sess AS (
+			INSERT INTO qc_cupping_sessions (
+				business_id, sample_business_id, batch_business_id, session_date, scorers,
+				fragrance, flavor, aftertaste, acidity, body, balance, uniformity, cleancup, sweetness, overall,
+				defect_cat1, defect_cat2, total_score, notes, attrs
+			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,
+			          COALESCE($20::jsonb,'{}'::jsonb))
+			RETURNING business_id, sample_business_id, batch_business_id, session_date::text, scorers,
+			          fragrance, flavor, aftertaste, acidity, body, balance, uniformity, cleancup, sweetness, overall,
+			          defect_cat1, defect_cat2, total_score, notes, status, attrs
+		), sheets AS (
+			INSERT INTO qc_cupping_scores (
+				session_business_id, evaluator, fragrance, flavor, aftertaste, acidity, body,
+				balance, uniformity, cleancup, sweetness, overall, defect_cat1, defect_cat2,
+				total_score, notes
+			)
+			SELECT (SELECT business_id FROM sess), r.evaluator, r.fragrance, r.flavor, r.aftertaste,
+			       r.acidity, r.body, r.balance, r.uniformity, r.cleancup, r.sweetness, r.overall,
+			       r.defect_cat1, r.defect_cat2, r.total_score, r.notes
+			FROM jsonb_to_recordset($21::jsonb) AS r(
+				evaluator text, fragrance float8, flavor float8, aftertaste float8, acidity float8,
+				body float8, balance float8, uniformity float8, cleancup float8, sweetness float8,
+				overall float8, defect_cat1 int, defect_cat2 int, total_score float8, notes text)
+		)
+		SELECT * FROM sess`,
 		businessID, sample.BusinessID, sample.BatchBusinessID, sessionDate, scorersJSON,
 		in.Fragrance, in.Flavor, in.Aftertaste, in.Acidity, in.Body, in.Balance,
 		in.Uniformity, in.CleanCup, in.Sweetness, in.Overall,
 		in.DefectCat1, in.DefectCat2, total, strings.TrimSpace(in.Notes),
-		attrsOptional(in.Attrs),
+		attrsOptional(in.Attrs), sheetsJSON,
 	).Scan(
 		&out.BusinessID, &out.SampleBusinessID, &out.BatchBusinessID, &out.SessionDate, &scorersJSON,
 		&out.Fragrance, &out.Flavor, &out.Aftertaste, &out.Acidity, &out.Body, &out.Balance,
@@ -181,4 +218,124 @@ func scanCuppingRows(rows rowScanner) ([]CuppingSession, error) {
 		out = append(out, item)
 	}
 	return out, rows.Err()
+}
+
+// panelSheet is the shape a sheet is sent to jsonb_to_recordset in.
+type panelSheet struct {
+	CuppingScoreInput
+	TotalScore float64 `json:"total_score"`
+}
+
+// normalizePanel trims and validates the sheets: every sheet names its
+// evaluator, and nobody scores the same session twice.
+func normalizePanel(in []CuppingScoreInput) ([]panelSheet, error) {
+	out := make([]panelSheet, 0, len(in))
+	seen := map[string]bool{}
+	for _, sc := range in {
+		sc.Evaluator = strings.TrimSpace(sc.Evaluator)
+		if sc.Evaluator == "" {
+			return nil, fmt.Errorf("%w: every cupping sheet needs an evaluator", ErrBadInput)
+		}
+		key := strings.ToLower(sc.Evaluator)
+		if seen[key] {
+			return nil, fmt.Errorf("%w: %s has two sheets in one session", ErrBadInput, sc.Evaluator)
+		}
+		seen[key] = true
+		sc.Notes = strings.TrimSpace(sc.Notes)
+		out = append(out, panelSheet{
+			CuppingScoreInput: sc,
+			TotalScore:        domain.CalcSCATotal(sc.scoreMap(), sc.DefectCat1, sc.DefectCat2),
+		})
+	}
+	return out, nil
+}
+
+// withPanelMean replaces a session's scores with the mean of its sheets, and
+// its scorers with the evaluators who actually scored.
+func withPanelMean(in CreateCuppingInput, sheets []panelSheet) CreateCuppingInput {
+	n := float64(len(sheets))
+	mean := func(pick func(CuppingScoreInput) float64) float64 {
+		sum := 0.0
+		for _, sh := range sheets {
+			sum += pick(sh.CuppingScoreInput)
+		}
+		return math.Round(sum/n*100) / 100
+	}
+	in.Fragrance = mean(func(s CuppingScoreInput) float64 { return s.Fragrance })
+	in.Flavor = mean(func(s CuppingScoreInput) float64 { return s.Flavor })
+	in.Aftertaste = mean(func(s CuppingScoreInput) float64 { return s.Aftertaste })
+	in.Acidity = mean(func(s CuppingScoreInput) float64 { return s.Acidity })
+	in.Body = mean(func(s CuppingScoreInput) float64 { return s.Body })
+	in.Balance = mean(func(s CuppingScoreInput) float64 { return s.Balance })
+	in.Uniformity = mean(func(s CuppingScoreInput) float64 { return s.Uniformity })
+	in.CleanCup = mean(func(s CuppingScoreInput) float64 { return s.CleanCup })
+	in.Sweetness = mean(func(s CuppingScoreInput) float64 { return s.Sweetness })
+	in.Overall = mean(func(s CuppingScoreInput) float64 { return s.Overall })
+	in.DefectCat1 = int(math.Round(mean(func(s CuppingScoreInput) float64 { return float64(s.DefectCat1) })))
+	in.DefectCat2 = int(math.Round(mean(func(s CuppingScoreInput) float64 { return float64(s.DefectCat2) })))
+	in.Scorers = make([]string, 0, len(sheets))
+	for _, sh := range sheets {
+		in.Scorers = append(in.Scorers, sh.Evaluator)
+	}
+	return in
+}
+
+func panelMeanTotal(sheets []panelSheet) float64 {
+	sum := 0.0
+	for _, sh := range sheets {
+		sum += sh.TotalScore
+	}
+	return math.Round(sum/float64(len(sheets))*100) / 100
+}
+
+// CuppingPanel is a session's sheets and how far its evaluators agreed.
+type CuppingPanel struct {
+	SessionBusinessID string            `json:"session_business_id"`
+	Scores            []CuppingScore    `json:"scores"`
+	Stats             domain.PanelStats `json:"stats"`
+}
+
+// GetCuppingPanel reads a session's sheets and computes the panel statistics.
+// A session recorded without sheets returns an empty panel, not an error.
+func (s *Store) GetCuppingPanel(ctx context.Context, sessionID string, threshold float64) (CuppingPanel, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	var exists bool
+	if err := s.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM qc_cupping_sessions WHERE business_id = $1)`,
+		sessionID).Scan(&exists); err != nil {
+		return CuppingPanel{}, err
+	}
+	if !exists {
+		return CuppingPanel{}, ErrNotFound
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT session_business_id, evaluator, fragrance, flavor, aftertaste, acidity, body,
+		       balance, uniformity, cleancup, sweetness, overall, defect_cat1, defect_cat2,
+		       total_score, notes, created_at
+		FROM qc_cupping_scores WHERE session_business_id = $1
+		ORDER BY evaluator`, sessionID)
+	if err != nil {
+		return CuppingPanel{}, err
+	}
+	defer rows.Close()
+	panel := CuppingPanel{SessionBusinessID: sessionID, Scores: []CuppingScore{}}
+	var forStats []domain.PanelScore
+	for rows.Next() {
+		var sc CuppingScore
+		if err := rows.Scan(&sc.SessionBusinessID, &sc.Evaluator, &sc.Fragrance, &sc.Flavor,
+			&sc.Aftertaste, &sc.Acidity, &sc.Body, &sc.Balance, &sc.Uniformity, &sc.CleanCup,
+			&sc.Sweetness, &sc.Overall, &sc.DefectCat1, &sc.DefectCat2, &sc.TotalScore,
+			&sc.Notes, &sc.CreatedAt); err != nil {
+			return CuppingPanel{}, err
+		}
+		panel.Scores = append(panel.Scores, sc)
+		forStats = append(forStats, domain.PanelScore{
+			Evaluator: sc.Evaluator, Scores: sc.scoreMap(),
+			DefectCat1: sc.DefectCat1, DefectCat2: sc.DefectCat2,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return CuppingPanel{}, err
+	}
+	panel.Stats = domain.ComputePanelStats(forStats, threshold)
+	return panel, nil
 }

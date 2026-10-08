@@ -29,6 +29,9 @@ func (h *QC) PostCupping(c *gin.Context) {
 		DefectCat2 int            `json:"defect_cat2"`
 		Notes      string         `json:"notes"`
 		Attrs      map[string]any `json:"attrs"`
+		// 018: one sheet per evaluator. When sent, the scores above are
+		// ignored and the session stores the panel mean.
+		Scores []store.CuppingScoreInput `json:"scores"`
 	}
 	if err := bindJSONCoerced(c, &body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -51,6 +54,7 @@ func (h *QC) PostCupping(c *gin.Context) {
 		DefectCat2:       body.DefectCat2,
 		Notes:            body.Notes,
 		Attrs:            body.Attrs,
+		Scores:           body.Scores,
 	})
 	if respondStoreErr(c, err) {
 		return
@@ -83,5 +87,37 @@ func (h *QC) PostCupping(c *gin.Context) {
 			"Cupping failed for batch "+summary.BatchBusinessID,
 			"Batch "+summary.BatchBusinessID+" graded "+summary.Grade+" (SCA score "+score+").")
 	}
-	c.JSON(http.StatusCreated, gin.H{"session": session, "summary": summary})
+	resp := gin.H{"session": session, "summary": summary}
+	if len(body.Scores) > 0 {
+		panel, err := h.Store.GetCuppingPanel(c.Request.Context(), session.BusinessID, 0)
+		if err == nil {
+			resp["panel"] = panel
+			// A panel that does not agree is worth a look before the score is
+			// relied on: an uncalibrated cupper, or a cup that was not the
+			// coffee on the label.
+			if panel.Stats.OutlierCount > 0 {
+				h.notifyAlert(c.Request.Context(), "qc.alert",
+					"Cupping panel disagreement on "+session.BusinessID,
+					strconv.Itoa(panel.Stats.OutlierCount)+" of "+strconv.Itoa(panel.Stats.PanelSize)+
+						" evaluators scored more than "+strconv.FormatFloat(panel.Stats.OutlierThreshold, 'f', -1, 64)+
+						" points from the panel median on batch "+session.BatchBusinessID+".")
+			}
+		}
+	}
+	c.JSON(http.StatusCreated, resp)
+}
+
+// GetCuppingPanel serves a session's per-evaluator sheets and the panel's
+// agreement statistics (018). ?threshold= overrides the outlier distance.
+func (h *QC) GetCuppingPanel(c *gin.Context) {
+	threshold, _ := strconv.ParseFloat(c.Query("threshold"), 64)
+	panel, err := h.Store.GetCuppingPanel(c.Request.Context(), c.Param("id"), threshold)
+	if respondStoreErr(c, err) {
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not load cupping panel"})
+		return
+	}
+	c.JSON(http.StatusOK, panel)
 }
