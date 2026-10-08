@@ -8,7 +8,6 @@ import (
 
 	"iag-quality-control/backend/internal/events"
 	"iag-quality-control/backend/internal/labels"
-	"iag-quality-control/backend/internal/middleware"
 	"iag-quality-control/backend/internal/store"
 )
 
@@ -146,7 +145,10 @@ func (h *QC) PostCoA(c *gin.Context) {
 		BatchBusinessID: body.BatchBusinessID,
 		CoaNumber:       body.CoaNumber,
 		DocumentRef:     body.DocumentRef,
-		IssuedBy:        middleware.ActorLabel(c),
+		// The verified token's identity (actorOf), not ActorLabel: that reads
+		// an X-User-Email header any caller can set, and without one it records
+		// "authenticated" — a certificate signed by nobody in particular.
+		IssuedBy: actorOf(c),
 	})
 	if respondStoreErr(c, err) {
 		return
