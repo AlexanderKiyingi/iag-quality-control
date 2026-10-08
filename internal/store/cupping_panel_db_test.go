@@ -77,6 +77,28 @@ func TestCuppingPanelAgainstRealPostgres(t *testing.T) {
 	if err != nil || len(empty.Scores) != 0 || empty.Stats.PanelSize != 0 {
 		t.Fatalf("a session without sheets has an empty panel: %+v %v", empty, err)
 	}
+	// Sheets saved one at a time, as each cupper fills in their own: the
+	// legacy session's typed-in scores give way to its panel's mean.
+	for _, sh := range []CuppingScoreInput{sheet("Ana", 8.0), sheet("Ben", 8.5)} {
+		if _, err := s.SaveCuppingScore(ctx, legacy.BusinessID, sh); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Ben corrects his sheet.
+	if _, err := s.SaveCuppingScore(ctx, legacy.BusinessID, sheet("Ben", 8.2)); err != nil {
+		t.Fatal(err)
+	}
+	after, err := s.GetLatestCuppingBySample(ctx, sample.BusinessID)
+	if err != nil || after.BusinessID != legacy.BusinessID || after.TotalScore != 81 || len(after.Scorers) != 2 {
+		t.Fatalf("session should be the mean of 80 and 82: %+v %v", after, err)
+	}
+	listed, err := s.ListCuppingScores(ctx, legacy.BusinessID, 0)
+	if err != nil || len(listed) != 2 || listed[0].PanelSize != 2 || listed[0].Deviation == 0 {
+		t.Fatalf("listed sheets: %+v %v", listed, err)
+	}
+	if _, err := s.SaveCuppingScore(ctx, "CUP-NOPE-"+run, sheet("Ana", 8)); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("sheet on an unknown session: want ErrNotFound, got %v", err)
+	}
 	if _, err := s.GetCuppingPanel(ctx, "CUP-NOPE-"+run, 0); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("unknown session: want ErrNotFound, got %v", err)
 	}

@@ -107,6 +107,36 @@ func (h *QC) PostCupping(c *gin.Context) {
 	c.JSON(http.StatusCreated, resp)
 }
 
+// SaveCuppingScore records one evaluator's sheet on an existing session (018)
+// and returns it; the session's mean is recomputed.
+func (h *QC) SaveCuppingScore(c *gin.Context) {
+	var body store.CuppingScoreInput
+	if err := bindJSONCoerced(c, &body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	item, err := h.Store.SaveCuppingScore(c.Request.Context(), c.Param("id"), body)
+	if respondStoreErr(c, err) {
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not save cupping sheet"})
+		return
+	}
+	c.JSON(http.StatusOK, item)
+}
+
+// ListCuppingScores lists sheets with each one's deviation in its panel.
+func (h *QC) ListCuppingScores(c *gin.Context) {
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "500"))
+	items, err := h.Store.ListCuppingScores(c.Request.Context(), c.Query("session"), limit)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not list cupping sheets"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items, "total": len(items)})
+}
+
 // GetCuppingPanel serves a session's per-evaluator sheets and the panel's
 // agreement statistics (018). ?threshold= overrides the outlier distance.
 func (h *QC) GetCuppingPanel(c *gin.Context) {

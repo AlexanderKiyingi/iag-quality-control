@@ -107,6 +107,8 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 		v1.GET("/chemical-tests", middleware.RequirePermission("qc.view_lab_summary"), qc.ListChemicalTests)
 		v1.GET("/cupping-sessions", middleware.RequirePermission("qc.view_lab_summary"), qc.ListCuppingSessions)
 		v1.GET("/cupping-sessions/:id/scores", middleware.RequirePermission("qc.view_lab_summary"), qc.GetCuppingPanel)
+		v1.POST("/cupping-sessions/:id/scores", middleware.RequirePermission("qc.record_tests"), qc.SaveCuppingScore)
+		v1.GET("/cupping-scores", middleware.RequirePermission("qc.view_lab_summary"), qc.ListCuppingScores)
 
 		v1.GET("/queues/instrument", middleware.RequirePermission("qc.view_queues"), qc.InstrumentQueue)
 		v1.GET("/queues/hplc", middleware.RequirePermission("qc.view_queues"), qc.HPLCQueue)

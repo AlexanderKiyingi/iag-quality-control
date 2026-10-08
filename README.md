@@ -165,6 +165,10 @@ defect_cat1, defect_cat2, notes}]`; the session then stores the **panel mean**.
 `GET /api/v1/cupping-sessions/{id}/scores?threshold=2` returns the sheets with
 per-attribute spread and each evaluator's deviation from the panel median;
 beyond the threshold is an outlier, and a panel with outliers notifies.
+Each cupper can also file their own sheet on an existing session with
+`POST /api/v1/cupping-sessions/{id}/scores` (same evaluator again = a
+correction); the session's mean is recomputed. `GET /api/v1/cupping-scores?session=`
+lists sheets with each one's deviation and outlier flag.
 
 `GET /api/v1/analytics/spc?metric=<any parameter>` now charts any measured
 parameter and takes its limits from the spec unless `usl`/`lsl` are passed;
