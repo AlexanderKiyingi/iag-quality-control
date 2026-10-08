@@ -151,12 +151,12 @@ func (h *QC) ListExternalAudits(c *gin.Context) {
 
 func (h *QC) UpsertExternalAudit(c *gin.Context) {
 	var body struct {
-		BusinessID  string `json:"business_id"`
-		AuditType   string `json:"audit_type" binding:"required"`
-		Body        string `json:"body"`
-		Description string `json:"description"`
-		AuditDate   string `json:"audit_date" binding:"required"`
-		Status      string `json:"status"`
+		BusinessID  string  `json:"business_id"`
+		AuditType   string  `json:"audit_type" binding:"required"`
+		Body        *string `json:"body"`
+		Description *string `json:"description"`
+		AuditDate   string  `json:"audit_date" binding:"required"`
+		Status      *string `json:"status"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -184,11 +184,11 @@ func (h *QC) AuditPack(c *gin.Context) {
 	certs, _ := h.Store.ListPendingCertifications(ctx, 100)
 	day, _ := h.Store.DayReport(ctx, c.Query("date"))
 	c.JSON(http.StatusOK, gin.H{
-		"generated_by": middleware.ActorLabel(c),
-		"day_report":   day,
-		"compliance":   compliance,
-		"capas":        capas,
-		"coas":         coas,
+		"generated_by":           middleware.ActorLabel(c),
+		"day_report":             day,
+		"compliance":             compliance,
+		"capas":                  capas,
+		"coas":                   coas,
 		"certifications_pending": certs,
 	})
 }

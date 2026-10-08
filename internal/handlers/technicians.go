@@ -34,9 +34,9 @@ func (h *QC) UpsertTechnician(c *gin.Context) {
 	var body struct {
 		BusinessID     string   `json:"business_id" binding:"required"`
 		Name           string   `json:"name" binding:"required"`
-		Role           string   `json:"role"`
-		Level          string   `json:"level"`
-		Color          string   `json:"color"`
+		Role           *string  `json:"role"`
+		Level          *string  `json:"level"`
+		Color          *string  `json:"color"`
 		Certifications []string `json:"certifications"`
 		Active         *bool    `json:"active"`
 	}

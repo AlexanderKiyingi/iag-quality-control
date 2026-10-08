@@ -19,12 +19,15 @@ type Technician struct {
 	Active         bool     `json:"active"`
 }
 
+// UpsertTechnicianInput is the write shape for a technician. BusinessID and
+// Name are required; the rest follow the nil/""/value contract in optional.go,
+// and a nil Certifications means "not sent" rather than "none".
 type UpsertTechnicianInput struct {
 	BusinessID     string
 	Name           string
-	Role           string
-	Level          string
-	Color          string
+	Role           *string
+	Level          *string
+	Color          *string
 	Certifications []string
 	Active         *bool
 }
@@ -63,46 +66,51 @@ func (s *Store) GetTechnician(ctx context.Context, businessID string) (Technicia
 	return out, nil
 }
 
+// UpsertTechnician creates or updates a technician, preserving any column the
+// caller did not send.
+//
+// It used to replace every column from EXCLUDED with `active` collapsing to
+// true whenever it was absent, so any partial save — correcting a name, adding
+// a certification — silently reactivated a technician who had been stood down.
 func (s *Store) UpsertTechnician(ctx context.Context, in UpsertTechnicianInput) (Technician, error) {
 	id := strings.TrimSpace(in.BusinessID)
 	name := strings.TrimSpace(in.Name)
 	if id == "" || name == "" {
 		return Technician{}, ErrBadInput
 	}
-	certs := in.Certifications
-	if certs == nil {
-		certs = []string{}
-	}
-	certsJSON, err := json.Marshal(certs)
-	if err != nil {
-		return Technician{}, err
-	}
-	active := true
-	if in.Active != nil {
-		active = *in.Active
-	}
-	color := strings.TrimSpace(in.Color)
-	if color == "" {
-		color = "#0e6b5f"
+	// nil means the caller did not send the list at all; an explicitly empty
+	// list still clears the certifications.
+	var certsJSON []byte
+	if in.Certifications != nil {
+		var err error
+		if certsJSON, err = json.Marshal(in.Certifications); err != nil {
+			return Technician{}, err
+		}
 	}
 	var out Technician
-	err = s.pool.QueryRow(ctx, `
+	var scanned []byte
+	err := s.pool.QueryRow(ctx, `
 		INSERT INTO qc_technicians (business_id, name, role, level, color, certifications, active)
-		VALUES ($1,$2,$3,$4,$5,$6,$7)
+		VALUES (
+			$1, $2, COALESCE($3::text, ''), COALESCE($4::text, ''),
+			COALESCE($5::text, '#0e6b5f'), COALESCE($6::jsonb, '[]'::jsonb),
+			COALESCE($7::boolean, true)
+		)
 		ON CONFLICT (business_id) DO UPDATE SET
 			name = EXCLUDED.name,
-			role = EXCLUDED.role,
-			level = EXCLUDED.level,
-			color = EXCLUDED.color,
-			certifications = EXCLUDED.certifications,
-			active = EXCLUDED.active
+			role = COALESCE($3::text, qc_technicians.role),
+			level = COALESCE($4::text, qc_technicians.level),
+			color = COALESCE($5::text, qc_technicians.color),
+			certifications = COALESCE($6::jsonb, qc_technicians.certifications),
+			active = COALESCE($7::boolean, qc_technicians.active)
 		RETURNING business_id, name, role, level, color, certifications, active`,
-		id, name, strings.TrimSpace(in.Role), strings.TrimSpace(in.Level), color, certsJSON, active,
-	).Scan(&out.BusinessID, &out.Name, &out.Role, &out.Level, &out.Color, &certsJSON, &out.Active)
+		id, name, trimOptional(in.Role), trimOptional(in.Level), blankToNil(in.Color),
+		certsJSON, in.Active,
+	).Scan(&out.BusinessID, &out.Name, &out.Role, &out.Level, &out.Color, &scanned, &out.Active)
 	if err != nil {
 		return Technician{}, err
 	}
-	_ = json.Unmarshal(certsJSON, &out.Certifications)
+	_ = json.Unmarshal(scanned, &out.Certifications)
 	return out, nil
 }
 

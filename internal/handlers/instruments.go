@@ -31,18 +31,21 @@ func (h *QC) GetInstrument(c *gin.Context) {
 }
 
 func (h *QC) UpsertInstrument(c *gin.Context) {
+	// Pointers everywhere but the name: an absent key must leave the stored
+	// column alone, and only a pointer can tell "not sent" from "sent empty".
+	// See internal/store/optional.go.
 	var body struct {
 		BusinessID     string  `json:"business_id"`
 		Name           string  `json:"name" binding:"required"`
-		InstrumentType string  `json:"instrument_type"`
-		Location       string  `json:"location"`
-		Status         string  `json:"status"`
-		OwnerTech      string  `json:"owner_tech"`
+		InstrumentType *string `json:"instrument_type"`
+		Location       *string `json:"location"`
+		Status         *string `json:"status"`
+		OwnerTech      *string `json:"owner_tech"`
 		LastCalDate    *string `json:"last_cal_date"`
 		NextCalDate    *string `json:"next_cal_date"`
-		Note           string  `json:"note"`
-		Samples24h     int     `json:"samples_24h"`
-		MESAssetTag    string  `json:"mes_asset_tag"`
+		Note           *string `json:"note"`
+		Samples24h     *int    `json:"samples_24h"`
+		MESAssetTag    *string `json:"mes_asset_tag"`
 	}
 	if err := bindJSONCoerced(c, &body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
