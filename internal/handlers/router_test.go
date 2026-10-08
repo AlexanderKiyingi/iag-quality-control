@@ -12,3 +12,24 @@ func TestNewRouterBuilds(t *testing.T) {
 		t.Fatal("expected routes to be registered")
 	}
 }
+
+// The route table is hand-written and the paths are the contract the Lab app's
+// adapter is keyed on, so a typo is a 404 nobody sees until a screen is empty.
+// This pins the paths added for the QA/lab module rather than trusting review.
+func TestNewRouterRegistersLabModuleRoutes(t *testing.T) {
+	registered := map[string]bool{}
+	for _, route := range NewRouter(RouterDeps{}).Routes() {
+		registered[route.Method+" "+route.Path] = true
+	}
+	for _, want := range []string{
+		"GET /api/v1/calibrations",
+		"POST /api/v1/calibrations",
+		"GET /api/v1/calibrations/:id",
+		"GET /api/v1/stability-studies",
+		"POST /api/v1/stability-studies",
+	} {
+		if !registered[want] {
+			t.Errorf("route not registered: %s", want)
+		}
+	}
+}

@@ -49,11 +49,11 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{
-			"status":    "ready",
-			"database":  true,
-			"kafka":     deps.Pub.Enabled(),
-			"scm":       deps.SCM != nil && deps.SCM.Enabled(),
-			"mes":       deps.MES != nil && deps.MES.Enabled(),
+			"status":   "ready",
+			"database": true,
+			"kafka":    deps.Pub.Enabled(),
+			"scm":      deps.SCM != nil && deps.SCM.Enabled(),
+			"mes":      deps.MES != nil && deps.MES.Enabled(),
 		})
 	})
 
@@ -145,6 +145,21 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 		v1.POST("/lab/methods", middleware.RequirePermission("qc.change_instruments"), qc.UpsertLabMethod)
 		v1.GET("/lab/requests", middleware.RequirePermission("qc.view_samples"), qc.ListLabRequests)
 		v1.POST("/lab/requests", middleware.RequirePermission("qc.add_sample"), qc.UpsertLabRequest)
+		// Calibrations and stability studies (011). Each is its own top-level
+		// collection so its ":id" sits in a fresh position: a second wildcard
+		// NAME under /instruments (e.g. /instruments/:instrumentId/calibrations
+		// beside the existing /instruments/:id) is what makes gin panic, which
+		// is what TestNewRouterBuilds guards. History is read as
+		// GET /calibrations?instrument=INS-26-0001.
+		//
+		// Permissions are reused rather than added: whoever keeps the instrument
+		// register records its calibrations, and a stability study is lab work
+		// planning like a lab request.
+		v1.GET("/calibrations", middleware.RequirePermission("qc.view_instruments"), qc.ListCalibrations)
+		v1.POST("/calibrations", middleware.RequirePermission("qc.change_instruments"), qc.CreateCalibration)
+		v1.GET("/calibrations/:id", middleware.RequirePermission("qc.view_instruments"), qc.GetCalibration)
+		v1.GET("/stability-studies", middleware.RequirePermission("qc.view_samples"), qc.ListStabilityStudies)
+		v1.POST("/stability-studies", middleware.RequirePermission("qc.add_sample"), qc.UpsertStabilityStudy)
 		v1.GET("/instruments", middleware.RequirePermission("qc.view_instruments"), qc.ListInstruments)
 		v1.POST("/instruments", middleware.RequirePermission("qc.change_instruments"), qc.UpsertInstrument)
 		v1.POST("/instruments/sync", middleware.RequirePermission("qc.sync_instruments"), qc.SyncInstruments)

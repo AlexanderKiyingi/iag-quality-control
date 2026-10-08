@@ -124,3 +124,57 @@ func TestOptionalHelpers(t *testing.T) {
 }
 
 func ptr(s string) *string { return &s }
+
+// Migration 011 resources, same contract.
+func TestLabModuleWritesValidateBeforeTouchingThePool(t *testing.T) {
+	s := &Store{}
+	ctx := context.Background()
+
+	t.Run("calibration without an instrument", func(t *testing.T) {
+		_, err := s.CreateInstrumentCalibration(ctx, CreateCalibrationInput{BusinessID: "CAL-26-0001"})
+		if !errors.Is(err, ErrBadInput) {
+			t.Fatalf("got %v, want ErrBadInput", err)
+		}
+	})
+	t.Run("calibration named only by instrument_name is accepted", func(t *testing.T) {
+		// An instrument the register has never heard of is still a calibration
+		// worth recording, so this must reach SQL rather than be refused.
+		defer func() {
+			if recover() == nil {
+				t.Fatal("expected the nil pool to be reached; the input was refused instead")
+			}
+		}()
+		_, _ = s.CreateInstrumentCalibration(ctx, CreateCalibrationInput{
+			BusinessID: "CAL-26-0001", InstrumentName: "Borrowed moisture meter",
+		})
+	})
+	t.Run("stability study without a product", func(t *testing.T) {
+		_, err := s.UpsertStabilityStudy(ctx, UpsertStabilityStudyInput{BusinessID: "STB-26-0001"})
+		if !errors.Is(err, ErrBadInput) {
+			t.Fatalf("got %v, want ErrBadInput", err)
+		}
+	})
+}
+
+func TestCalibrationVocabulary(t *testing.T) {
+	for in, want := range map[string]string{
+		"Pass": "pass", "Adjust": "adjust", "Fail": "fail", "FAILED": "fail", "": "",
+	} {
+		if got := normalizeCalResult(in); got != want {
+			t.Errorf("normalizeCalResult(%q) = %q, want %q", in, got, want)
+		}
+	}
+	for in, want := range map[string]string{
+		"Current": "current", "Due": "due", "Overdue": "overdue",
+		"Out of service": "out_of_service", "out-of-service": "out_of_service", "": "",
+	} {
+		if got := normalizeCalStatus(in); got != want {
+			t.Errorf("normalizeCalStatus(%q) = %q, want %q", in, got, want)
+		}
+	}
+	// An unfamiliar word is kept, not guessed at — a wrong verdict on a
+	// calibration certificate is worse than an unfamiliar one.
+	if got := normalizeCalResult("Conditional"); got != "Conditional" {
+		t.Errorf("normalizeCalResult dropped an unknown verdict: %q", got)
+	}
+}
