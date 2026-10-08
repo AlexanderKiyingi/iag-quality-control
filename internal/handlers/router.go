@@ -79,6 +79,7 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 		v1.GET("/search", middleware.RequirePermission("qc.search"), qc.Search)
 		v1.GET("/calendar", middleware.RequirePermission("qc.view_calendar"), qc.Calendar)
 		v1.GET("/analytics/spc", middleware.RequirePermission("qc.view_analytics"), qc.SPCAnalytics)
+		v1.GET("/analytics/spc/parameters", middleware.RequirePermission("qc.view_analytics"), qc.SPCParameters)
 
 		v1.GET("/reports/day-summary", middleware.RequirePermission("qc.view_reports"), qc.DayReport)
 		v1.GET("/reports/day-summary/pdf", middleware.RequirePermission("qc.export_pdf"), qc.DayReportPDF)
