@@ -81,6 +81,19 @@ Added for the Lab app's own screens. Methods and requests arrived with migration
 | GET/POST | `/api/v1/calibrations` | Instrument calibration events; `?instrument=&status=&limit=` |
 | GET | `/api/v1/calibrations/{id}` | Single calibration |
 | GET/POST | `/api/v1/stability-studies` | Stability studies (upsert by `business_id`); `?status=&limit=` |
+| GET | `/api/v1/lab/measurements` | Parameterised results; `?sample=&parameter=&limit=` |
+| POST | `/api/v1/samples/{id}/measurements` | Record a result for any analyte |
+
+`/lab/measurements` is the one that records an **arbitrary** analyte.
+`POST /lab/results` is a six-metric *batch rollup* (it writes
+`qc_batch_lab_summary`, one row per batch), and `physical-tests` /
+`chemical-tests` have one fixed column per analyte — so before 013 the Lab app
+sent every result as `moisture_pct` and read it back labelled "moisture". A
+measurement whose parameter is one of the rollup's six is mirrored into it, so
+SPC, the dashboard, the CoA PDF and `qc.lab.result_recorded` keep being fed;
+anything else is stored as a measurement and nothing more. `value_text` always
+keeps what was typed ("<0.1", "pass"), and `value_num` is filled only when it
+parses.
 
 A calibration is an event, so there is no update verb and history is read from
 the collection filtered by instrument — **not** from a nested route under
