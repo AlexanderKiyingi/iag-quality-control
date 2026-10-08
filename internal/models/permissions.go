@@ -38,5 +38,12 @@ func PermissionDescriptors() []PermissionDescriptor {
 		{Name: "qc.change_external_audits", Description: "Manage external audit schedule"},
 		{Name: "qc.export_audit_pack", Description: "Export bundled compliance audit pack"},
 		{Name: "qc.admin.read", Description: "Staff audit and monitoring APIs"},
+		// Migration 012. Only two names are added for six new resources:
+		// calibrations reuse the instrument pair, non-conformances and
+		// in-process checks the compliance pair, stability studies the sample
+		// pair. Releasing or holding a batch is different — it emits events
+		// other services act on — so it is grantable on its own.
+		{Name: "qc.view_release_decisions", Description: "View batch release decisions and the hold log"},
+		{Name: "qc.decide_release", Description: "Release, hold, reject or rework a batch"},
 	}
 }
