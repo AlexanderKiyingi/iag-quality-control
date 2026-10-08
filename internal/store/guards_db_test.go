@@ -388,6 +388,41 @@ func TestUpsertGuardsAgainstRealPostgres(t *testing.T) {
 		}
 	})
 
+	t.Run("sample attrs merge, so notes can go back to being notes", func(t *testing.T) {
+		created, err := s.CreateSample(ctx, CreateSampleInput{
+			BatchBusinessID: "BATCH-ATTRS-" + run, SampleID: id("SMPA"),
+			Notes: "arrived warm",
+			Attrs: map[string]any{"location": "Cold room A", "quantity": "500", "unit": "g"},
+		})
+		if err != nil {
+			t.Fatalf("create: %v", err)
+		}
+		if created.Notes != "arrived warm" {
+			t.Errorf("notes should carry only notes now: %q", created.Notes)
+		}
+		if created.Attrs["location"] != "Cold room A" {
+			t.Errorf("attrs not stored: %v", created.Attrs)
+		}
+
+		// A later edit that knows about attachments must not wipe the intake
+		// fields, and must not have to resend them.
+		patched, err := s.UpdateSample(ctx, created.BusinessID, SamplePatch{
+			Attrs: map[string]any{"attachments": "[{\"storageId\":\"abc\"}]"},
+		})
+		if err != nil {
+			t.Fatalf("patch: %v", err)
+		}
+		if patched.Attrs["location"] != "Cold room A" {
+			t.Error("a second writer wiped the first writer's attrs keys")
+		}
+		if patched.Attrs["attachments"] == nil {
+			t.Error("attachments did not merge in")
+		}
+		if patched.Notes != "arrived warm" {
+			t.Errorf("an attrs-only patch changed the notes: %q", patched.Notes)
+		}
+	})
+
 	t.Run("stability study keeps the columns a partial save omitted", func(t *testing.T) {
 		stb := id("STB")
 		if _, err := s.UpsertStabilityStudy(ctx, UpsertStabilityStudyInput{

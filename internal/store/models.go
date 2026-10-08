@@ -3,17 +3,22 @@ package store
 import "time"
 
 type Sample struct {
-	BusinessID      string     `json:"business_id"`
-	BatchBusinessID string     `json:"batch_business_id"`
-	SampleType      string     `json:"sample_type"`
-	Status          string     `json:"status"`
-	Priority        string     `json:"priority"`
-	AssignedTech    string     `json:"assigned_tech"`
-	TestsRequired   []string   `json:"tests_required"`
-	Notes           string     `json:"notes"`
-	ReceivedAt      time.Time  `json:"received_at"`
-	CompletedAt     *time.Time `json:"completed_at,omitempty"`
-	CreatedAt       time.Time  `json:"created_at"`
+	BusinessID      string   `json:"business_id"`
+	BatchBusinessID string   `json:"batch_business_id"`
+	SampleType      string   `json:"sample_type"`
+	Status          string   `json:"status"`
+	Priority        string   `json:"priority"`
+	AssignedTech    string   `json:"assigned_tech"`
+	TestsRequired   []string `json:"tests_required"`
+	Notes           string   `json:"notes"`
+	// Migration 014. Storage location, quantity, unit, condition on receipt and
+	// chain-of-custody attachments — things an intake form collects that this
+	// table has no column for. Before this they were packed into Notes as a JSON
+	// envelope, which put a blob where a technician's notes belong.
+	Attrs       map[string]any `json:"attrs"`
+	ReceivedAt  time.Time      `json:"received_at"`
+	CompletedAt *time.Time     `json:"completed_at,omitempty"`
+	CreatedAt   time.Time      `json:"created_at"`
 }
 
 type PhysicalTest struct {
@@ -49,40 +54,40 @@ type ChemicalTest struct {
 }
 
 type CuppingSession struct {
-	BusinessID       string    `json:"business_id"`
-	SampleBusinessID string    `json:"sample_business_id"`
-	BatchBusinessID  string    `json:"batch_business_id"`
-	SessionDate      string    `json:"session_date"`
-	Scorers          []string  `json:"scorers"`
-	Fragrance        float64   `json:"fragrance"`
-	Flavor           float64   `json:"flavor"`
-	Aftertaste       float64   `json:"aftertaste"`
-	Acidity          float64   `json:"acidity"`
-	Body             float64   `json:"body"`
-	Balance          float64   `json:"balance"`
-	Uniformity       float64   `json:"uniformity"`
-	CleanCup         float64   `json:"cleancup"`
-	Sweetness        float64   `json:"sweetness"`
-	Overall          float64   `json:"overall"`
-	DefectCat1       int       `json:"defect_cat1"`
-	DefectCat2       int       `json:"defect_cat2"`
-	TotalScore       float64   `json:"total_score"`
-	Grade            string    `json:"grade"`
-	Notes            string    `json:"notes"`
-	Status           string    `json:"status"`
+	BusinessID       string   `json:"business_id"`
+	SampleBusinessID string   `json:"sample_business_id"`
+	BatchBusinessID  string   `json:"batch_business_id"`
+	SessionDate      string   `json:"session_date"`
+	Scorers          []string `json:"scorers"`
+	Fragrance        float64  `json:"fragrance"`
+	Flavor           float64  `json:"flavor"`
+	Aftertaste       float64  `json:"aftertaste"`
+	Acidity          float64  `json:"acidity"`
+	Body             float64  `json:"body"`
+	Balance          float64  `json:"balance"`
+	Uniformity       float64  `json:"uniformity"`
+	CleanCup         float64  `json:"cleancup"`
+	Sweetness        float64  `json:"sweetness"`
+	Overall          float64  `json:"overall"`
+	DefectCat1       int      `json:"defect_cat1"`
+	DefectCat2       int      `json:"defect_cat2"`
+	TotalScore       float64  `json:"total_score"`
+	Grade            string   `json:"grade"`
+	Notes            string   `json:"notes"`
+	Status           string   `json:"status"`
 }
 
 type BatchLabSummary struct {
-	BatchBusinessID string     `json:"batch_business_id"`
-	Moisture        *float64   `json:"moisture,omitempty"`
-	WaterActivity   *float64   `json:"water_activity,omitempty"`
-	CupScore        *float64   `json:"cup_score,omitempty"`
-	Grade           string     `json:"grade"`
-	Defects         *int       `json:"defects,omitempty"`
-	Tester          string     `json:"tester"`
-	LabDate         *string    `json:"lab_date,omitempty"`
-	LatestSampleID  string     `json:"latest_sample_id,omitempty"`
-	UpdatedAt       time.Time  `json:"updated_at"`
+	BatchBusinessID string    `json:"batch_business_id"`
+	Moisture        *float64  `json:"moisture,omitempty"`
+	WaterActivity   *float64  `json:"water_activity,omitempty"`
+	CupScore        *float64  `json:"cup_score,omitempty"`
+	Grade           string    `json:"grade"`
+	Defects         *int      `json:"defects,omitempty"`
+	Tester          string    `json:"tester"`
+	LabDate         *string   `json:"lab_date,omitempty"`
+	LatestSampleID  string    `json:"latest_sample_id,omitempty"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 type CoA struct {
@@ -103,6 +108,7 @@ type CreateSampleInput struct {
 	TestsRequired   []string
 	Notes           string
 	SampleID        string
+	Attrs           map[string]any
 }
 
 type CreatePhysicalTestInput struct {
