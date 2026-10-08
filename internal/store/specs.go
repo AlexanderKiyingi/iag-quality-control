@@ -17,7 +17,7 @@ import (
 // ErrNeedsOverride is returned when a user's result contradicts the verdict
 // the service computed and no override reason was given. It is a 422, not a
 // 400: the payload is well-formed, it just asserts something the limits deny.
-var ErrNeedsOverride = errors.New("result contradicts the specification verdict; an override_reason is required")
+var ErrNeedsOverride = errors.New("this result contradicts the specification verdict — give an override reason to save it")
 
 // ErrAutoActions wraps a failure to raise the NC/hold AFTER the record itself
 // was saved. The record is returned alongside it: the save happened, and
