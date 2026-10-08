@@ -60,7 +60,7 @@ func (h *QC) UpsertNonConformance(c *gin.Context) {
 		BusinessID: body.BusinessID, Title: body.Title, RaisedDate: body.RaisedDate,
 		SourceRef: body.SourceRef, Severity: body.Severity, Owner: body.Owner,
 		Status: body.Status, Description: body.Description, RootCause: body.RootCause,
-		Attachments: body.Attachments, Attrs: body.Attrs,
+		Attachments: body.Attachments, Attrs: body.Attrs, Actor: actorOf(c),
 	})
 	if respondStoreErr(c, err) {
 		return
@@ -177,7 +177,7 @@ func (h *QC) UpsertReleaseDecision(c *gin.Context) {
 		BusinessID: body.BusinessID, BatchRef: body.BatchRef, DecisionDate: body.DecisionDate,
 		Product: body.Product, CheckRefs: body.CheckRefs, DecidedBy: body.DecidedBy,
 		Decision: body.Decision, Status: body.Status, Notes: body.Notes,
-		Attachments: body.Attachments, Attrs: body.Attrs,
+		Attachments: body.Attachments, Attrs: body.Attrs, Actor: actorOf(c),
 	})
 	if respondStoreErr(c, err) {
 		return

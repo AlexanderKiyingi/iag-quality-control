@@ -22,8 +22,12 @@ type NonConformance struct {
 	RootCause   string         `json:"root_cause"`
 	Attachments string         `json:"attachments"`
 	Attrs       map[string]any `json:"attrs"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
+	// AutoSource is the record whose failed specification raised this NC
+	// (016), or "" for one a person raised.
+	AutoSource string    `json:"auto_source"`
+	UpdatedBy  string    `json:"updated_by"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 // UpsertNonConformanceInput is the write shape. Title is required; the optional
@@ -40,10 +44,12 @@ type UpsertNonConformanceInput struct {
 	RootCause   *string
 	Attachments *string
 	Attrs       map[string]any
+	Actor       string
 }
 
 const nonConformanceCols = `business_id, raised_date::text, source_ref, title, severity, owner,
-	status, description, root_cause, attachments, attrs, created_at, updated_at`
+	status, description, root_cause, attachments, attrs, auto_source, updated_by,
+	created_at, updated_at`
 
 func (s *Store) ListNonConformances(ctx context.Context, status, severity string, limit int) ([]NonConformance, error) {
 	if limit <= 0 || limit > 500 {
@@ -100,12 +106,12 @@ func (s *Store) UpsertNonConformance(ctx context.Context, in UpsertNonConformanc
 	rows, err := s.pool.Query(ctx, `
 		INSERT INTO qc_non_conformances (
 			business_id, raised_date, source_ref, title, severity, owner,
-			status, description, root_cause, attachments, attrs, updated_at
+			status, description, root_cause, attachments, attrs, updated_by, updated_at
 		) VALUES (
 			$1, COALESCE(NULLIF($2::text, '')::date, CURRENT_DATE), COALESCE($3::text, ''), $4,
 			COALESCE($5::text, 'minor'), COALESCE($6::text, ''), COALESCE($7::text, 'open'),
 			COALESCE($8::text, ''), COALESCE($9::text, ''), COALESCE($10::text, ''),
-			COALESCE($11::jsonb, '{}'::jsonb), NOW()
+			COALESCE($11::jsonb, '{}'::jsonb), $12, NOW()
 		)
 		ON CONFLICT (business_id) DO UPDATE SET
 			raised_date = CASE WHEN $2::text IS NULL THEN qc_non_conformances.raised_date
@@ -121,11 +127,12 @@ func (s *Store) UpsertNonConformance(ctx context.Context, in UpsertNonConformanc
 			attachments = COALESCE($10::text, qc_non_conformances.attachments),
 			attrs = CASE WHEN $11::jsonb IS NULL THEN qc_non_conformances.attrs
 			             ELSE qc_non_conformances.attrs || $11::jsonb END,
+			updated_by = EXCLUDED.updated_by,
 			updated_at = NOW()
 		RETURNING `+nonConformanceCols,
 		id, in.RaisedDate, trimOptional(in.SourceRef), title, blankToNil(in.Severity),
 		trimOptional(in.Owner), blankToNil(in.Status), in.Description, in.RootCause,
-		in.Attachments, attrsOptional(in.Attrs),
+		in.Attachments, attrsOptional(in.Attrs), strings.TrimSpace(in.Actor),
 	)
 	if err != nil {
 		return NonConformance{}, err
@@ -145,7 +152,8 @@ func scanNonConformance(rows interface{ Scan(...any) error }) (NonConformance, e
 	var attrs []byte
 	if err := rows.Scan(&item.BusinessID, &item.RaisedDate, &item.SourceRef, &item.Title,
 		&item.Severity, &item.Owner, &item.Status, &item.Description, &item.RootCause,
-		&item.Attachments, &attrs, &item.CreatedAt, &item.UpdatedAt); err != nil {
+		&item.Attachments, &attrs, &item.AutoSource, &item.UpdatedBy,
+		&item.CreatedAt, &item.UpdatedAt); err != nil {
 		return NonConformance{}, err
 	}
 	item.Attrs = attrsMap(attrs)

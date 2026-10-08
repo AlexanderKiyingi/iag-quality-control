@@ -70,6 +70,7 @@ type UpsertCAPAInput struct {
 	Effectiveness    *string
 	Attachments      *string
 	Attrs            map[string]any
+	Actor            string
 }
 
 func (s *Store) ListComplianceLogs(ctx context.Context, limit int) ([]ComplianceLog, error) {
@@ -206,14 +207,14 @@ func (s *Store) UpsertCAPA(ctx context.Context, in UpsertCAPAInput) (CAPA, error
 		INSERT INTO qc_capas (
 			business_id, title, source_ref, status, priority, owner,
 			root_cause, corrective_action, opened_at, closed_at,
-			due_date, capa_kind, effectiveness, attachments, attrs
+			due_date, capa_kind, effectiveness, attachments, attrs, updated_by
 		) VALUES (
 			$1, $2,
 			COALESCE($3::text, ''), COALESCE($4::text, 'open'), COALESCE($5::text, ''),
 			COALESCE($6::text, ''), COALESCE($7::text, ''), COALESCE($8::text, ''),
 			COALESCE(NULLIF($9::text, '')::date, CURRENT_DATE), NULLIF($10::text, '')::date,
 			NULLIF($11::text, '')::date, COALESCE($12::text, ''), COALESCE($13::text, ''),
-			COALESCE($14::text, ''), COALESCE($15::jsonb, '{}'::jsonb)
+			COALESCE($14::text, ''), COALESCE($15::jsonb, '{}'::jsonb), $16
 		)
 		ON CONFLICT (business_id) DO UPDATE SET
 			title = EXCLUDED.title,
@@ -236,12 +237,13 @@ func (s *Store) UpsertCAPA(ctx context.Context, in UpsertCAPAInput) (CAPA, error
 			effectiveness = COALESCE($13::text, qc_capas.effectiveness),
 			attachments = COALESCE($14::text, qc_capas.attachments),
 			attrs = CASE WHEN $15::jsonb IS NULL THEN qc_capas.attrs
-			             ELSE qc_capas.attrs || $15::jsonb END
+			             ELSE qc_capas.attrs || $15::jsonb END,
+			updated_by = EXCLUDED.updated_by
 		RETURNING `+capaCols,
 		id, title, trimOptional(in.SourceRef), blankToNil(in.Status), trimOptional(in.Priority),
 		trimOptional(in.Owner), trimOptional(in.RootCause), trimOptional(in.CorrectiveAction),
 		openedAt, in.ClosedAt, in.DueDate, trimOptional(in.CAPAKind),
-		in.Effectiveness, in.Attachments, attrsOptional(in.Attrs),
+		in.Effectiveness, in.Attachments, attrsOptional(in.Attrs), strings.TrimSpace(in.Actor),
 	)
 	if err != nil {
 		return CAPA{}, err

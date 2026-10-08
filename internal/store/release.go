@@ -41,6 +41,7 @@ type UpsertReleaseDecisionInput struct {
 	Notes        *string
 	Attachments  *string
 	Attrs        map[string]any
+	Actor        string
 }
 
 // NormalizeReleaseDecision maps the app's decision labels onto the stored
@@ -143,12 +144,12 @@ func (s *Store) UpsertReleaseDecision(ctx context.Context, in UpsertReleaseDecis
 		), up AS (
 			INSERT INTO qc_release_decisions (
 				business_id, decision_date, batch_ref, product, check_refs, decided_by,
-				decision, status, notes, attachments, attrs, updated_at
+				decision, status, notes, attachments, attrs, updated_by, updated_at
 			) VALUES (
 				$1, COALESCE(NULLIF($2::text, '')::date, CURRENT_DATE), $3, COALESCE($4::text, ''),
 				COALESCE($5::text, ''), COALESCE($6::text, ''), COALESCE($7::text, ''),
 				COALESCE($8::text, 'draft'), COALESCE($9::text, ''), COALESCE($10::text, ''),
-				COALESCE($11::jsonb, '{}'::jsonb), NOW()
+				COALESCE($11::jsonb, '{}'::jsonb), $12, NOW()
 			)
 			ON CONFLICT (business_id) DO UPDATE SET
 				decision_date = CASE WHEN $2::text IS NULL THEN qc_release_decisions.decision_date
@@ -164,13 +165,14 @@ func (s *Store) UpsertReleaseDecision(ctx context.Context, in UpsertReleaseDecis
 				attachments = COALESCE($10::text, qc_release_decisions.attachments),
 				attrs = CASE WHEN $11::jsonb IS NULL THEN qc_release_decisions.attrs
 				             ELSE qc_release_decisions.attrs || $11::jsonb END,
+				updated_by = EXCLUDED.updated_by,
 				updated_at = NOW()
 			RETURNING `+releaseCols+`
 		)
 		SELECT up.*, COALESCE((SELECT decision FROM prev), '') AS prev_decision FROM up`,
 		id, in.DecisionDate, batchRef, trimOptional(in.Product), trimOptional(in.CheckRefs),
 		trimOptional(in.DecidedBy), decision, blankToNil(in.Status), in.Notes,
-		in.Attachments, attrsOptional(in.Attrs),
+		in.Attachments, attrsOptional(in.Attrs), strings.TrimSpace(in.Actor),
 	)
 	if err != nil {
 		return ReleaseDecision{}, false, err

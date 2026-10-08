@@ -203,6 +203,9 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 		v1.GET("/specifications", middleware.RequirePermission("qc.view_specifications"), qc.ListSpecifications)
 		v1.POST("/specifications", middleware.RequirePermission("qc.change_specifications"), qc.UpsertSpecification)
 		v1.GET("/specifications/:id", middleware.RequirePermission("qc.view_specifications"), qc.GetSpecification)
+		// Before/after history of the quality record (017). Read-only: the log
+		// is append-only in the database itself.
+		v1.GET("/change-log", middleware.RequirePermission("qc.view_change_log"), qc.ListChangeLog)
 		v1.GET("/instruments", middleware.RequirePermission("qc.view_instruments"), qc.ListInstruments)
 		v1.POST("/instruments", middleware.RequirePermission("qc.change_instruments"), qc.UpsertInstrument)
 		v1.POST("/instruments/sync", middleware.RequirePermission("qc.sync_instruments"), qc.SyncInstruments)
