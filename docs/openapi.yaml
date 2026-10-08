@@ -281,6 +281,23 @@ paths:
       summary: List incoming supplier lot inspections
     post:
       summary: Upsert an incoming inspection
+  /api/v1/specifications:
+    get:
+      summary: List specification limits (016)
+    post:
+      summary: Upsert a specification limit
+  /api/v1/specifications/{id}:
+    get:
+      summary: Get a specification
+  /api/v1/change-log:
+    get:
+      summary: Before/after history of quality records (017)
+  /api/v1/cupping-sessions/{id}/scores:
+    get:
+      summary: Per-evaluator cupping sheets and panel agreement (018)
+  /api/v1/analytics/spc/parameters:
+    get:
+      summary: Parameters with data to chart
   /api/v1/incoming-inspections/{id}:
     delete:
       summary: Delete an incoming inspection (only while open)

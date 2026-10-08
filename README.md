@@ -125,6 +125,55 @@ conditional) or `qc.batch.held` (hold, reject, rework) — but **only when the
 decision is new or has changed**, since the route is an upsert and a batch is
 released once. An unrecognised decision emits nothing rather than guessing.
 
+### Specifications, verdicts and auto actions (016)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET/POST | `/api/v1/specifications` | Limit master; `?stage=&parameter=&include_inactive=true` |
+| GET | `/api/v1/specifications/{id}` | Single spec |
+
+A spec is LSL/USL (either may be absent) for a **stage** (`incoming`,
+`in_process`, `finished`, `any`), a **parameter** (canonicalised, so
+`Moisture %` = `moisture_pct` = `moisture`) and an optional **grade**. The most
+specific active spec wins, stage before grade. Only one active spec may hold a
+slot (**409** otherwise) — supersede by deactivating.
+
+Measurements, incoming inspections and in-process checks are judged on every
+save and carry `verdict` (`pass`/`fail`/`no_spec`/`not_numeric`) and
+`evaluation` (the band used, as it stood). A blank or `pending` result takes
+the verdict; a result that **contradicts** it needs `override_reason`, else
+**422** `override_required`.
+
+`action_on_fail` decides what a failure does: `none` records it, `flag` also
+raises a non-conformance (`auto_source` = the failing record), `hold` also
+places a hold on the batch/lot and emits `qc.batch.held`. Once per source
+record — a re-save raises nothing new — and nothing is released automatically.
+The write response carries `auto_actions`. Seeded: moisture ≤ 12.5 (flag; hold
+on `incoming`), water activity ≤ 0.70 (flag).
+
+### Change log (017)
+
+`GET /api/v1/change-log?entity=incoming-inspections&id=IIN-26-0004&actor=` —
+every write to the quality record, by database trigger: the new row on insert,
+`{col: {old, new}}` on update, the old row on delete. Append-only (UPDATE /
+DELETE / TRUNCATE raise). The actor is the verified token's email.
+
+### Cupping panels (018)
+
+`POST /api/v1/samples/{id}/cupping` accepts `scores: [{evaluator, fragrance, …,
+defect_cat1, defect_cat2, notes}]`; the session then stores the **panel mean**.
+`GET /api/v1/cupping-sessions/{id}/scores?threshold=2` returns the sheets with
+per-attribute spread and each evaluator's deviation from the panel median;
+beyond the threshold is an outlier, and a panel with outliers notifies.
+Each cupper can also file their own sheet on an existing session with
+`POST /api/v1/cupping-sessions/{id}/scores` (same evaluator again = a
+correction); the session's mean is recomputed. `GET /api/v1/cupping-scores?session=`
+lists sheets with each one's deviation and outlier flag.
+
+`GET /api/v1/analytics/spc?metric=<any parameter>` now charts any measured
+parameter and takes its limits from the spec unless `usl`/`lsl` are passed;
+`GET /api/v1/analytics/spc/parameters` lists what has data.
+
 ### Deleting
 
 `DELETE` exists on exactly five paths, and only while the row is still planning
@@ -242,7 +291,7 @@ Instruments accept `mes_asset_tag` for auto-sync (background job every `INSTRUME
 | `qc.lab.result_recorded` | Test or lab summary update |
 | `qc.coa.issued` | CoA issued (direct or via certification) |
 | `qc.batch.released` | Release decision of `released` or `conditional`, first time or on change |
-| `qc.batch.held` | Release decision of `hold`, `reject` or `rework`, first time or on change |
+| `qc.batch.held` | Release decision of `hold`, `reject` or `rework`, first time or on change; or a failure on a `hold` spec (`automatic: true`) |
 
 The two `qc.batch.*` types have **no consumer yet**. Both `iag-warehouse` and
 `iag-traceability` ignore unknown event types (`default: return nil`), so they are

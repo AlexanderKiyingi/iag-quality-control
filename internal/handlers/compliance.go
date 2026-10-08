@@ -85,7 +85,7 @@ func (h *QC) UpsertCAPA(c *gin.Context) {
 		Priority: body.Priority, Owner: body.Owner, RootCause: body.RootCause,
 		CorrectiveAction: body.CorrectiveAction, OpenedAt: body.OpenedAt, ClosedAt: body.ClosedAt,
 		DueDate: body.DueDate, CAPAKind: body.CAPAKind, Effectiveness: body.Effectiveness,
-		Attachments: body.Attachments, Attrs: body.Attrs,
+		Attachments: body.Attachments, Attrs: body.Attrs, Actor: actorOf(c),
 	})
 	if respondStoreErr(c, err) {
 		return

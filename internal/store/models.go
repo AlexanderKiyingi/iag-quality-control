@@ -162,6 +162,44 @@ type CreateCuppingInput struct {
 	DefectCat2       int
 	Notes            string
 	Attrs            map[string]any
+	// Migration 018. When present, one sheet per evaluator: the session's own
+	// scores above are ignored and replaced by the panel mean.
+	Scores []CuppingScoreInput
+}
+
+// CuppingScoreInput is one evaluator's SCA sheet.
+type CuppingScoreInput struct {
+	Evaluator  string  `json:"evaluator"`
+	Fragrance  float64 `json:"fragrance"`
+	Flavor     float64 `json:"flavor"`
+	Aftertaste float64 `json:"aftertaste"`
+	Acidity    float64 `json:"acidity"`
+	Body       float64 `json:"body"`
+	Balance    float64 `json:"balance"`
+	Uniformity float64 `json:"uniformity"`
+	CleanCup   float64 `json:"cleancup"`
+	Sweetness  float64 `json:"sweetness"`
+	Overall    float64 `json:"overall"`
+	DefectCat1 int     `json:"defect_cat1"`
+	DefectCat2 int     `json:"defect_cat2"`
+	Notes      string  `json:"notes"`
+}
+
+// CuppingScore is a stored sheet.
+type CuppingScore struct {
+	CuppingScoreInput
+	SessionBusinessID string    `json:"session_business_id"`
+	TotalScore        float64   `json:"total_score"`
+	CreatedAt         time.Time `json:"created_at"`
+}
+
+func (in CuppingScoreInput) scoreMap() map[string]float64 {
+	return map[string]float64{
+		"fragrance": in.Fragrance, "flavor": in.Flavor, "aftertaste": in.Aftertaste,
+		"acidity": in.Acidity, "body": in.Body, "balance": in.Balance,
+		"uniformity": in.Uniformity, "cleancup": in.CleanCup, "sweetness": in.Sweetness,
+		"overall": in.Overall,
+	}
 }
 
 type UpsertLabSummaryInput struct {

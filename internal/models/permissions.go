@@ -45,5 +45,11 @@ func PermissionDescriptors() []PermissionDescriptor {
 		// other services act on — so it is grantable on its own.
 		{Name: "qc.view_release_decisions", Description: "View batch release decisions and the hold log"},
 		{Name: "qc.decide_release", Description: "Release, hold, reject or rework a batch"},
+		// Migration 016. A spec decides what is automatically raised and held,
+		// so changing one is grantable apart from recording results.
+		{Name: "qc.view_specifications", Description: "View specification limits"},
+		{Name: "qc.change_specifications", Description: "Create, edit and retire specification limits"},
+		// Migration 017.
+		{Name: "qc.view_change_log", Description: "View the before/after history of quality records"},
 	}
 }

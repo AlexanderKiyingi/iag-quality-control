@@ -79,6 +79,7 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 		v1.GET("/search", middleware.RequirePermission("qc.search"), qc.Search)
 		v1.GET("/calendar", middleware.RequirePermission("qc.view_calendar"), qc.Calendar)
 		v1.GET("/analytics/spc", middleware.RequirePermission("qc.view_analytics"), qc.SPCAnalytics)
+		v1.GET("/analytics/spc/parameters", middleware.RequirePermission("qc.view_analytics"), qc.SPCParameters)
 
 		v1.GET("/reports/day-summary", middleware.RequirePermission("qc.view_reports"), qc.DayReport)
 		v1.GET("/reports/day-summary/pdf", middleware.RequirePermission("qc.export_pdf"), qc.DayReportPDF)
@@ -105,6 +106,9 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 		v1.GET("/physical-tests", middleware.RequirePermission("qc.view_lab_summary"), qc.ListPhysicalTests)
 		v1.GET("/chemical-tests", middleware.RequirePermission("qc.view_lab_summary"), qc.ListChemicalTests)
 		v1.GET("/cupping-sessions", middleware.RequirePermission("qc.view_lab_summary"), qc.ListCuppingSessions)
+		v1.GET("/cupping-sessions/:id/scores", middleware.RequirePermission("qc.view_lab_summary"), qc.GetCuppingPanel)
+		v1.POST("/cupping-sessions/:id/scores", middleware.RequirePermission("qc.record_tests"), qc.SaveCuppingScore)
+		v1.GET("/cupping-scores", middleware.RequirePermission("qc.view_lab_summary"), qc.ListCuppingScores)
 
 		v1.GET("/queues/instrument", middleware.RequirePermission("qc.view_queues"), qc.InstrumentQueue)
 		v1.GET("/queues/hplc", middleware.RequirePermission("qc.view_queues"), qc.HPLCQueue)
@@ -197,6 +201,15 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 		v1.POST("/release-decisions", middleware.RequirePermission("qc.decide_release"), qc.UpsertReleaseDecision)
 		v1.GET("/hold-events", middleware.RequirePermission("qc.view_release_decisions"), qc.ListHoldEvents)
 		v1.POST("/hold-events", middleware.RequirePermission("qc.decide_release"), qc.CreateHoldEvent)
+		// Specification limits (016). Changing one gets its own permission: a
+		// spec decides what is automatically raised as a non-conformance and
+		// held, so it must be grantable apart from recording results.
+		v1.GET("/specifications", middleware.RequirePermission("qc.view_specifications"), qc.ListSpecifications)
+		v1.POST("/specifications", middleware.RequirePermission("qc.change_specifications"), qc.UpsertSpecification)
+		v1.GET("/specifications/:id", middleware.RequirePermission("qc.view_specifications"), qc.GetSpecification)
+		// Before/after history of the quality record (017). Read-only: the log
+		// is append-only in the database itself.
+		v1.GET("/change-log", middleware.RequirePermission("qc.view_change_log"), qc.ListChangeLog)
 		v1.GET("/instruments", middleware.RequirePermission("qc.view_instruments"), qc.ListInstruments)
 		v1.POST("/instruments", middleware.RequirePermission("qc.change_instruments"), qc.UpsertInstrument)
 		v1.POST("/instruments/sync", middleware.RequirePermission("qc.sync_instruments"), qc.SyncInstruments)

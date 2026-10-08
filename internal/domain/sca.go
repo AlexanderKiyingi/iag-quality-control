@@ -1,5 +1,7 @@
 package domain
 
+import "math"
+
 // SCATier returns the commercial grade label for an SCA total score.
 func SCATier(score float64) string {
 	switch {
@@ -21,7 +23,9 @@ func CalcSCATotal(scores map[string]float64, defectCat1, defectCat2 int) float64
 		total += v
 	}
 	total -= float64(defectCat1*4 + defectCat2*2)
-	return total
+	// Ten float scores in quarter points do not sum exactly (8.3 x 10 is
+	// 82.99999999999999); a score sheet is read to two places.
+	return math.Round(total*100) / 100
 }
 
 // MoisturePass reports whether moisture is within export spec (≤12.5%).

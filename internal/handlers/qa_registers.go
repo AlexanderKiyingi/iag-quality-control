@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -59,7 +60,7 @@ func (h *QC) UpsertNonConformance(c *gin.Context) {
 		BusinessID: body.BusinessID, Title: body.Title, RaisedDate: body.RaisedDate,
 		SourceRef: body.SourceRef, Severity: body.Severity, Owner: body.Owner,
 		Status: body.Status, Description: body.Description, RootCause: body.RootCause,
-		Attachments: body.Attachments, Attrs: body.Attrs,
+		Attachments: body.Attachments, Attrs: body.Attrs, Actor: actorOf(c),
 	})
 	if respondStoreErr(c, err) {
 		return
@@ -95,6 +96,8 @@ func (h *QC) UpsertInProcessCheck(c *gin.Context) {
 		Status     *string        `json:"status"`
 		Notes      *string        `json:"notes"`
 		Attrs      map[string]any `json:"attrs"`
+		// 016: why the checker's result disagrees with the verdict.
+		OverrideReason *string `json:"override_reason"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -104,8 +107,12 @@ func (h *QC) UpsertInProcessCheck(c *gin.Context) {
 		BusinessID: body.BusinessID, Parameter: body.Parameter, CheckDate: body.CheckDate,
 		Stage: body.Stage, BatchRef: body.BatchRef, Target: body.Target, Actual: body.Actual,
 		CheckedBy: body.CheckedBy, Result: body.Result, Status: body.Status,
-		Notes: body.Notes, Attrs: body.Attrs,
+		Notes: body.Notes, Attrs: body.Attrs, OverrideReason: body.OverrideReason, Actor: actorOf(c),
 	})
+	if errors.Is(err, store.ErrAutoActions) {
+		log.Printf("quality-control: in-process check %s: %v", item.BusinessID, err)
+		err = nil
+	}
 	if respondStoreErr(c, err) {
 		return
 	}
@@ -113,6 +120,7 @@ func (h *QC) UpsertInProcessCheck(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not save in-process check"})
 		return
 	}
+	h.announceAutoActions(c.Request.Context(), item.AutoActions, item.BusinessID)
 	c.JSON(http.StatusOK, item)
 }
 
@@ -169,7 +177,7 @@ func (h *QC) UpsertReleaseDecision(c *gin.Context) {
 		BusinessID: body.BusinessID, BatchRef: body.BatchRef, DecisionDate: body.DecisionDate,
 		Product: body.Product, CheckRefs: body.CheckRefs, DecidedBy: body.DecidedBy,
 		Decision: body.Decision, Status: body.Status, Notes: body.Notes,
-		Attachments: body.Attachments, Attrs: body.Attrs,
+		Attachments: body.Attachments, Attrs: body.Attrs, Actor: actorOf(c),
 	})
 	if respondStoreErr(c, err) {
 		return
