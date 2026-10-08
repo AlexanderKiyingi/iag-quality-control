@@ -45,6 +45,11 @@ func (h *QC) ListCoA(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not list coa"})
 		return
 	}
+	if items == nil {
+		// An empty register is [], not null: clients that iterate items
+		// should not have to guard against the store's nil slice.
+		items = []store.CoA{}
+	}
 	c.JSON(http.StatusOK, gin.H{"items": items, "total": len(items)})
 }
 
