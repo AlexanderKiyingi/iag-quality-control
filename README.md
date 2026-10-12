@@ -247,6 +247,34 @@ A grading records what a grader counted in a green sample (350 g by default). Th
   The top three also need moisture of 9–13 %. Anything unmeasured is named in `grade_reasons`, not assumed good.
 - **Metrics:** `full_defects`, `category1_full_defects`, `category2_full_defects`, `quakers`, `moisture`, `water_activity`, `density_g_l` and `screen_<n>_plus_pct` are judged against the active specs (016) for the grading's stage (default `incoming`) and `grade_target`. Export grades are configured as specs, e.g. Screen 18 = `screen_18_plus_pct` LSL 90 for grade target "Screen 18". A failing flag/hold spec raises the NC and the hold. The metrics also appear in SPC. Moisture, water activity and full defects feed the batch rollup.
 
+### Control charts, alarms and the quality dashboard (022)
+
+| Method | Path | Permission | |
+|---|---|---|---|
+| GET | `/api/v1/analytics/spc?metric=&chart=&subgroup=&days=&batch_business_id=` | `qc.view_analytics` | `chart`: `i_mr` (default), `xbar_r`, `xbar_s`, `p`, `c`; `subgroup`: `batch` (default), `sample`, `day`; `metric=failure_rate` is the p chart of every judged record |
+| GET | `/api/v1/spc-alerts?status=open&parameter=` | `qc.view_analytics` | |
+| POST | `/api/v1/spc-alerts/:id/acknowledge` | `qc.record_tests` | `{note}`, required |
+| GET / PUT | `/api/v1/spc-settings/:parameter` | `qc.view_analytics` / `qc.change_specifications` | `{rules, alarms, raise_nc, change_reason}` |
+| GET | `/api/v1/analytics/quality-dashboard?days=30` | `qc.view_reports` | daily throughput, failure rate, cup score and cupper spread; incoming verdicts; open NCs by severity; CAPAs by status and overdue; active holds; open alarms; green grades |
+| GET | `/api/v1/change-log/pdf?entity=&id=&actor=&from=&to=` | `qc.view_change_log` | the audit trail as a PDF, up to 2000 entries |
+
+- **Limits come from short-term variation:**
+  - I-MR: mean ± 2.66 × MR̄.
+  - X̄-R and X̄-S: the tabulated A2/D3/D4 and A3/B3/B4 factors, per subgroup size. X̄-S is used past n = 10.
+  - p: p̄ ± 3√(p̄(1−p̄)/n) per subgroup.
+  - c: c̄ ± 3√c̄.
+
+  Before 022 the I-chart used ±3 × the overall standard deviation, which a drifting process widens.
+- **Nelson rules:**
+  - 1: beyond 3σ.
+  - 2: nine on one side.
+  - 3: six rising or falling.
+  - 5: two of three beyond 2σ.
+  - 6: four of five beyond 1σ.
+
+  Each point lists the rules it completes.
+- **Alarms:** every measurement and green grading is checked as it is recorded (I-MR, 30 days, the parameter's rules). Each broken rule files one alarm (unique per reading and rule) and sends `qc.alert`. With `raise_nc`, it also raises a flag-level NC titled "Out of statistical control". The write never fails because of the check.
+
 ### Deleting
 
 `DELETE` exists on exactly five paths, and only while the row is still planning

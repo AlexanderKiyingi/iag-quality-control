@@ -86,5 +86,8 @@ func (h *QC) PostLabMeasurement(c *gin.Context) {
 		return
 	}
 	h.announceAutoActions(c.Request.Context(), item.AutoActions, item.BusinessID)
+	if item.ValueNum != nil {
+		item.SPCAlerts = h.checkSPC(c.Request.Context(), item.BusinessID, actorOf(c), item.Parameter)
+	}
 	c.JSON(http.StatusOK, item)
 }

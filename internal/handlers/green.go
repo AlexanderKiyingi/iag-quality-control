@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"errors"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -53,6 +55,10 @@ func (h *QC) CreateGreenGrading(c *gin.Context) {
 	}
 	body.Actor = actorOf(c)
 	item, err := h.Store.CreateGreenGrading(c.Request.Context(), body)
+	if errors.Is(err, store.ErrAutoActions) {
+		log.Printf("quality-control: green grading %s: %v", item.BusinessID, err)
+		err = nil
+	}
 	if respondStoreErr(c, err) {
 		return
 	}
@@ -60,6 +66,12 @@ func (h *QC) CreateGreenGrading(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not record green grading"})
 		return
 	}
+	h.announceAutoActions(c.Request.Context(), item.AutoActions, item.BusinessID)
+	params := make([]string, 0, len(item.Result.Metrics))
+	for k := range item.Result.Metrics {
+		params = append(params, k)
+	}
+	item.SPCAlerts = h.checkSPC(c.Request.Context(), item.BusinessID, actorOf(c), params...)
 	c.JSON(http.StatusCreated, item)
 }
 

@@ -42,6 +42,7 @@ type GreenGrading struct {
 	GradedAt         time.Time          `json:"graded_at"`
 	// What a failing grading set in motion; only on the write response.
 	AutoActions *AutoActions `json:"auto_actions,omitempty"`
+	SPCAlerts   []SPCAlert   `json:"spc_alerts,omitempty"`
 }
 
 // CreateGreenGradingInput is a grader's sheet.
