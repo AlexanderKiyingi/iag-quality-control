@@ -72,7 +72,7 @@ func RenderCupping(d CuppingData) ([]byte, error) {
 			pdf.Cell(0, 7, "Tasting Notes")
 			pdf.Ln(7)
 			pdf.SetFont("Arial", "", 10)
-			pdf.MultiCell(0, 5, d.Notes, "", "L", false)
+			pdf.MultiCell(0, 5, tr(pdf, d.Notes), "", "L", false)
 		}
 		footer(pdf, "SCA cupping protocol — IAG Quality Control")
 	})

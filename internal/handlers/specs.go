@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -75,11 +76,19 @@ func (h *QC) UpsertSpecification(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not check the signature"})
 		return
 	}
+	// A reason is required to change an existing spec. Whether it exists is
+	// what decides that — not whether the caller chose the reference for a
+	// new one, which the Lab form always does.
 	reason := strings.TrimSpace(body.ChangeReason)
 	if reason == "" {
-		if strings.TrimSpace(body.BusinessID) == "" {
+		_, err := h.Store.GetSpecification(c.Request.Context(), body.BusinessID)
+		switch {
+		case strings.TrimSpace(body.BusinessID) == "" || errors.Is(err, store.ErrNotFound):
 			reason = "New specification"
-		} else {
+		case err != nil:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not load specification"})
+			return
+		default:
 			respondStoreErr(c, store.ErrReasonRequired)
 			return
 		}
