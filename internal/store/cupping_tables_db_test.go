@@ -137,6 +137,9 @@ func TestCuppingTablesAgainstRealPostgres(t *testing.T) {
 			Hedonic: allHedonic(7)}); !errors.Is(err, ErrTableClosed) {
 			t.Fatalf("a closed table refuses sheets: got %v", err)
 		}
+		if log, err := s.ListChangeLog(ctx, "cupping-tables", table.BusinessID, "", 5); err != nil || len(log) < 2 {
+			t.Fatalf("closing a table belongs in the change log: %+v %v", log, err)
+		}
 		if _, err := s.CloseCuppingTable(ctx, table.BusinessID, "ana@iag", ""); !errors.Is(err, ErrTableClosed) {
 			t.Fatalf("closing twice: got %v", err)
 		}

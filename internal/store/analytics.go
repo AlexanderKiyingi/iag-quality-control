@@ -110,6 +110,16 @@ func (s *Store) SPC(ctx context.Context, opts SPCOptions) (SPCSeries, error) {
 		}
 	}
 
+	// Green gradings (021) carry their derived metrics by canonical name.
+	if err := appendRows(`
+		SELECT graded_at::text, (metrics->>$3)::float8, sample_business_id
+		FROM qc_green_gradings
+		WHERE status <> 'void' AND metrics ? $3
+		  AND graded_at >= NOW() - ($1::int || ' days')::interval
+		  AND ($2 = '' OR batch_business_id = $2)`, days, batchID, metric); err != nil {
+		return SPCSeries{}, err
+	}
+
 	rows, err := s.pool.Query(ctx, `
 		SELECT created_at::text, value_num::float8, sample_business_id, parameter
 		FROM qc_lab_measurements
@@ -253,6 +263,9 @@ func (s *Store) SPCParameters(ctx context.Context, days int) ([]SPCParameter, er
 		 WHERE moisture_pct IS NOT NULL AND tested_at >= NOW() - ($1::int || ' days')::interval`,
 		`SELECT 'cup_score', COUNT(*) FROM qc_cupping_sessions
 		 WHERE created_at >= NOW() - ($1::int || ' days')::interval`,
+		`SELECT m.key, COUNT(*) FROM qc_green_gradings g, jsonb_each(g.metrics) m
+		 WHERE g.status <> 'void' AND g.graded_at >= NOW() - ($1::int || ' days')::interval
+		 GROUP BY m.key`,
 		`SELECT parameter, COUNT(*) FROM qc_lab_measurements
 		 WHERE value_num IS NOT NULL AND status <> 'void'
 		   AND created_at >= NOW() - ($1::int || ' days')::interval
