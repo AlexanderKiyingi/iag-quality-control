@@ -54,6 +54,22 @@ func TestCoATemplatesAndAlertRoutesAgainstRealPostgres(t *testing.T) {
 			CustomerRef: customer, Parameters: []CoAField{{Parameter: "moisture"}}}); !errors.Is(err, ErrReasonRequired) {
 			t.Fatalf("an edit without a reason: %v", err)
 		}
+		// A certificate issued for the customer carries it, and finds the template.
+		coa, err := s.CreateCoA(ctx, CreateCoAInput{CoaNumber: "COA-CTPL-" + run, LotBusinessID: "LOT-CTPL-" + run,
+			IssuedBy: "qa@iag", CustomerRef: customer})
+		if err != nil || coa.CustomerRef != customer {
+			t.Fatalf("issue: %+v %v", coa, err)
+		}
+		again, err := s.GetCoAByNumber(ctx, coa.CoaNumber)
+		if err != nil || again.CustomerRef != customer {
+			t.Fatalf("read back: %+v %v", again, err)
+		}
+		if found, ok, _ := s.ResolveCoATemplate(ctx, again.TemplateRef, again.CustomerRef); !ok || found.BusinessID != tpl.BusinessID {
+			t.Fatalf("the issued CoA resolves its customer's template: %+v", found)
+		}
+		if list, err := s.ListCoA(ctx, coa.LotBusinessID, 10); err != nil || len(list) != 1 || list[0].CustomerRef != customer {
+			t.Fatalf("list: %+v %v", list, err)
+		}
 		if _, ok, _ := s.ResolveCoATemplate(ctx, "", "NOBODY-"+run); ok {
 			// Only when no house default exists in this database; a default is fine too.
 			def, _, _ := s.ResolveCoATemplate(ctx, "", "NOBODY-"+run)

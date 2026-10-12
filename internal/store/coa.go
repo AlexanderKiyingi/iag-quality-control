@@ -24,7 +24,6 @@ func (s *Store) CreateCoA(ctx context.Context, in CreateCoAInput) (CoA, error) {
 		strings.TrimSpace(in.CustomerRef), strings.TrimSpace(in.TemplateRef),
 	).Scan(
 		&out.CoaNumber, &out.LotBusinessID, &out.BatchBusinessID, &out.DocumentRef, &out.IssuedBy, &out.IssuedAt, &out.Status, &out.CustomerRef, &out.TemplateRef,
-		&out.CustomerRef, &out.TemplateRef,
 	)
 	if err != nil {
 		if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "unique") {
