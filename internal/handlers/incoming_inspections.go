@@ -42,6 +42,9 @@ func (h *QC) UpsertIncomingInspection(c *gin.Context) {
 		// 016: why the inspector's result disagrees with the verdict.
 		OverrideReason *string `json:"override_reason"`
 		ChangeReason   string  `json:"change_reason"`
+		SupplierRef    *string `json:"supplier_ref"`
+		PORef          *string `json:"po_ref"`
+		ReceiptRef     *string `json:"receipt_ref"`
 	}
 	// Coerced: sample_size, defect_count and moisture arrive as strings from a
 	// web form.
@@ -55,6 +58,7 @@ func (h *QC) UpsertIncomingInspection(c *gin.Context) {
 		DefectCount: body.DefectCount, Inspector: body.Inspector, Result: body.Result,
 		Status: body.Status, Notes: body.Notes, Attachments: body.Attachments, Attrs: body.Attrs,
 		OverrideReason: body.OverrideReason, Actor: actorOf(c), ChangeReason: body.ChangeReason,
+		SupplierRef: body.SupplierRef, PORef: body.PORef, ReceiptRef: body.ReceiptRef,
 	})
 	if errors.Is(err, store.ErrAutoActions) {
 		log.Printf("quality-control: incoming inspection %s: %v", item.BusinessID, err)
@@ -68,5 +72,6 @@ func (h *QC) UpsertIncomingInspection(c *gin.Context) {
 		return
 	}
 	h.announceAutoActions(c.Request.Context(), item.AutoActions, item.BusinessID)
+	h.refreshSupplier(c.Request.Context(), item.SupplierRef)
 	c.JSON(http.StatusOK, item)
 }

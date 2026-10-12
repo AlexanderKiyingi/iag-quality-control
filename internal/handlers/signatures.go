@@ -52,6 +52,7 @@ var signPermissions = map[string]string{
 	"release-decisions": "qc.decide_release",
 	"non-conformances":  "qc.change_compliance",
 	"capas":             "qc.change_compliance",
+	"scars":             "qc.change_compliance",
 }
 
 var errSignatureReused = errors.New("that signature has already been used — re-enter your password to sign again")
@@ -120,6 +121,12 @@ func (h *QC) SignRecord(c *gin.Context) {
 	if sig.Entity == "release-decisions" && sig.Meaning == "approved" {
 		if ev := h.announceSignedRelease(c.Request.Context(), sig.BusinessID); ev != "" {
 			resp["event_type"] = ev
+		}
+	}
+	// A closed SCAR can move its supplier's recommended status.
+	if sig.Entity == "scars" {
+		if scar, err := h.Store.GetSCAR(c.Request.Context(), sig.BusinessID); err == nil {
+			h.refreshSupplier(c.Request.Context(), scar.SupplierRef)
 		}
 	}
 	c.JSON(http.StatusOK, resp)

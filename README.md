@@ -275,6 +275,27 @@ A grading records what a grader counted in a green sample (350 g by default). Th
   Each point lists the rules it completes.
 - **Alarms:** every measurement and green grading is checked as it is recorded (I-MR, 30 days, the parameter's rules). Each broken rule files one alarm (unique per reading and rule) and sends `qc.alert`. With `raise_nc`, it also raises a flag-level NC titled "Out of statistical control". The write never fails because of the check.
 
+### Supplier quality (023)
+
+Procurement owns the supplier master and decides each supplier's status. Quality supplies the evidence.
+
+| Method | Path | Permission | |
+|---|---|---|---|
+| POST / PUT | incoming inspections | as before | now take `supplier_ref`, `po_ref`, `receipt_ref` (procurement's vendor id, PO and GRN) |
+| GET | `/api/v1/supplier-scorecards?supplier_ref=&days=365` | `qc.view_compliance` | lots, decided/accepted/rejected, acceptance rate, average moisture and defects, NCs, open/overdue/critical SCARs, monthly trend, recommended status and why |
+| GET | `/api/v1/scars?supplier_ref=&status=` | `qc.view_compliance` | `status=active` means not closed or cancelled |
+| POST | `/api/v1/scars` | `qc.change_compliance` | `{nc_ref | supplier_ref, title, description, requested_action, severity, due_date}`. From an NC on an inspected lot, the supplier and inspection are filled in. The due date defaults to +30 days |
+| PATCH | `/api/v1/scars/:id` | `qc.change_compliance` | the supplier's root cause and action (stamps `response_received_at`), the effectiveness check and `effective`, status short of `closed`. Every edit needs `change_reason` |
+| POST | `/api/v1/signatures` `{entity: "scars", meaning: "closed"}` | `qc.change_compliance` | closes and locks the SCAR, only once `effective` is true |
+
+- **Lot decision:** a lot is accepted or rejected by its spec verdict, or else by the inspector's result.
+- **Recommendation** (`domain.RecommendSupplierStatus`):
+  - **approved:** ≥ 95 % accepted, with no overdue or open critical SCAR.
+  - **conditional:** ≥ 85 % accepted, or approved-level but with such a SCAR.
+  - **suspended:** below 85 %.
+  - **insufficient_data:** fewer than 3 decided lots.
+- **`qc.supplier.scorecard`** is published to `iag.quality` when a supplier's recommendation changes, after an inspection or a SCAR change. Procurement consumes it and records the advice next to its own decision.
+
 ### Deleting
 
 `DELETE` exists on exactly five paths, and only while the row is still planning
