@@ -2,28 +2,54 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"sort"
 	"strings"
+
+	"iag-quality-control/backend/internal/domain"
 )
 
 type SPCPoint struct {
 	Timestamp string  `json:"timestamp"`
 	Value     float64 `json:"value"`
 	Subgroup  string  `json:"subgroup,omitempty"`
-	OutOfCtrl bool    `json:"out_of_control"`
-	OutOfSpec bool    `json:"out_of_spec"`
+	// Ref is the record the reading came from; Batch is its batch.
+	Ref       string `json:"ref,omitempty"`
+	Batch     string `json:"batch,omitempty"`
+	OutOfCtrl bool   `json:"out_of_control"`
+	OutOfSpec bool   `json:"out_of_spec"`
+	// Rules lists the Nelson rules this point completes (domain.Rules).
+	Rules []int `json:"rules,omitempty"`
+}
+
+// SPCSubgroup is one plotted mean on an X̄ chart.
+type SPCSubgroup struct {
+	domain.Subgroup
+	FirstSeen string `json:"first_seen"`
+	OutOfCtrl bool   `json:"out_of_control"`
+	Rules     []int  `json:"rules,omitempty"`
+}
+
+// SPCProportion is one plotted fraction on a p chart.
+type SPCProportion struct {
+	domain.Proportion
+	OutOfCtrl bool  `json:"out_of_control"`
+	Rules     []int `json:"rules,omitempty"`
 }
 
 type SPCSeries struct {
-	Metric            string     `json:"metric"`
-	BatchBusinessID   string     `json:"batch_business_id,omitempty"`
-	Days              int        `json:"days"`
-	Count             int        `json:"count"`
-	Mean              float64    `json:"mean"`
-	StdDev            float64    `json:"std_dev"`
-	UCL               float64    `json:"ucl"`
-	LCL               float64    `json:"lcl"`
+	Metric          string  `json:"metric"`
+	Chart           string  `json:"chart"`
+	BatchBusinessID string  `json:"batch_business_id,omitempty"`
+	Days            int     `json:"days"`
+	Count           int     `json:"count"`
+	Mean            float64 `json:"mean"`
+	StdDev          float64 `json:"std_dev"`
+	UCL             float64 `json:"ucl"`
+	LCL             float64 `json:"lcl"`
+	// Sigma is the short-term σ the limits were set from.
+	Sigma             float64    `json:"sigma"`
 	USL               *float64   `json:"usl,omitempty"`
 	LSL               *float64   `json:"lsl,omitempty"`
 	Cp                *float64   `json:"cp,omitempty"`
@@ -33,7 +59,29 @@ type SPCSeries struct {
 	OutOfSpecCount    int        `json:"out_of_spec_count"`
 	// SpecID names the specification the limits came from, when they did.
 	SpecID string `json:"spec_id,omitempty"`
+	// I-MR: the moving ranges (one fewer than points) and their limits.
+	MovingRanges []float64      `json:"moving_ranges,omitempty"`
+	MRLimits     *domain.Limits `json:"mr_limits,omitempty"`
+	// X̄-R / X̄-S: the subgroups, how they were formed, and how many single
+	// readings could not form one.
+	SubgroupBy string        `json:"subgroup_by,omitempty"`
+	Subgroups  []SPCSubgroup `json:"subgroups,omitempty"`
+	Dropped    int           `json:"dropped,omitempty"`
+	// p chart.
+	Proportions []SPCProportion `json:"proportions,omitempty"`
+	// Rule breaks across the chart, and what each rule means.
+	RuleBreaks int            `json:"rule_breaks"`
+	RuleNames  map[int]string `json:"rule_names"`
 }
+
+// Chart types SPC draws.
+const (
+	ChartIMR   = "i_mr"
+	ChartXBarR = "xbar_r"
+	ChartXBarS = "xbar_s"
+	ChartP     = "p"
+	ChartC     = "c"
+)
 
 type SPCOptions struct {
 	Metric  string
@@ -42,6 +90,12 @@ type SPCOptions struct {
 	USL     *float64
 	LSL     *float64
 	SpecID  string
+	// Chart is one of the Chart* constants; i_mr when empty.
+	Chart string
+	// SubgroupBy is batch (default), sample or day, for X̄ and p charts.
+	SubgroupBy string
+	// Rules to test; domain.DefaultRules when nil.
+	Rules []int
 }
 
 /*
@@ -71,7 +125,212 @@ func (s *Store) SPC(ctx context.Context, opts SPCOptions) (SPCSeries, error) {
 	if days <= 0 || days > 90 {
 		days = 30
 	}
+	chart := strings.TrimSpace(opts.Chart)
+	if chart == "" {
+		chart = ChartIMR
+	}
+	switch chart {
+	case ChartIMR, ChartXBarR, ChartXBarS, ChartP, ChartC:
+	default:
+		return SPCSeries{}, fmt.Errorf("%w: chart is i_mr, xbar_r, xbar_s, p or c", ErrBadInput)
+	}
+	rules := opts.Rules
+	if rules == nil {
+		rules = domain.DefaultRules
+	}
 
+	var points []SPCPoint
+	if metric == "failure_rate" {
+		var err error
+		if points, err = s.verdictPoints(ctx, days, batchID); err != nil {
+			return SPCSeries{}, err
+		}
+		chart = ChartP
+	} else {
+		var err error
+		if points, err = s.spcPoints(ctx, metric, days, batchID); err != nil {
+			return SPCSeries{}, err
+		}
+	}
+
+	series := SPCSeries{
+		Metric: metric, Chart: chart, BatchBusinessID: batchID, Days: days, Count: len(points),
+		Points: points, USL: opts.USL, LSL: opts.LSL, SpecID: opts.SpecID, RuleNames: domain.Rules,
+	}
+	if series.Points == nil {
+		series.Points = []SPCPoint{}
+	}
+	if len(points) == 0 {
+		return series, nil
+	}
+	values := make([]float64, len(points))
+	for i, p := range points {
+		values[i] = p.Value
+		if metric != "failure_rate" && !withinSpec(p.Value, opts.LSL, opts.USL) {
+			series.Points[i].OutOfSpec = true
+			series.OutOfSpecCount++
+		}
+	}
+	mean, std := meanStd(values)
+	series.Mean, series.StdDev = round2(mean), round2(std)
+
+	switch chart {
+	case ChartIMR, ChartC:
+		var band domain.Limits
+		if chart == ChartC {
+			band = domain.CChart(values)
+		} else {
+			var mrLimits domain.Limits
+			band, series.MovingRanges, mrLimits = domain.IMR(values)
+			series.MRLimits = &mrLimits
+		}
+		series.UCL, series.LCL, series.Sigma = band.UCL, band.LCL, band.Sigma
+		broken := domain.ApplyRules(values, []domain.Limits{band}, rules)
+		for i := range series.Points {
+			series.Points[i].Rules = broken[i]
+			if values[i] > band.UCL || values[i] < band.LCL {
+				series.Points[i].OutOfCtrl = true
+				series.OutOfControlCount++
+			}
+			if len(broken[i]) > 0 {
+				series.RuleBreaks++
+			}
+		}
+	case ChartXBarR, ChartXBarS:
+		series.SubgroupBy = subgroupBy(opts.SubgroupBy)
+		groups, firstSeen := groupPoints(points, series.SubgroupBy)
+		out, grand, dropped := domain.XBar(groups, chart == ChartXBarS)
+		series.Dropped = dropped
+		series.Mean = round2(grand)
+		means := make([]float64, len(out))
+		limits := make([]domain.Limits, len(out))
+		for i, g := range out {
+			means[i], limits[i] = g.Mean, g.Limits
+		}
+		broken := domain.ApplyRules(means, limits, rules)
+		for i, g := range out {
+			sg := SPCSubgroup{Subgroup: g, FirstSeen: firstSeen[g.Key], Rules: broken[i]}
+			sg.OutOfCtrl = g.Mean > g.Limits.UCL || g.Mean < g.Limits.LCL
+			if sg.OutOfCtrl {
+				series.OutOfControlCount++
+			}
+			if len(broken[i]) > 0 {
+				series.RuleBreaks++
+			}
+			series.Subgroups = append(series.Subgroups, sg)
+		}
+		if len(out) > 0 {
+			series.UCL, series.LCL, series.Sigma = out[0].Limits.UCL, out[0].Limits.LCL, out[0].Limits.Sigma
+		}
+	case ChartP:
+		if metric != "failure_rate" && opts.USL == nil && opts.LSL == nil {
+			return SPCSeries{}, fmt.Errorf("%w: a p chart of %s needs spec limits to count failures against", ErrBadInput, metric)
+		}
+		by := subgroupBy(opts.SubgroupBy)
+		if opts.SubgroupBy == "" {
+			by = "day"
+		}
+		series.SubgroupBy = by
+		order := []string{}
+		props := map[string]*domain.Proportion{}
+		for _, p := range series.Points {
+			k := subgroupKey(p, by)
+			if props[k] == nil {
+				props[k] = &domain.Proportion{Key: k}
+				order = append(order, k)
+			}
+			props[k].Inspected++
+			failed := p.OutOfSpec
+			if metric == "failure_rate" {
+				failed = p.Value > 0
+			}
+			if failed {
+				props[k].Defective++
+			}
+		}
+		in := make([]domain.Proportion, 0, len(order))
+		for _, k := range order {
+			in = append(in, *props[k])
+		}
+		out := domain.PChart(in)
+		ps := make([]float64, len(out))
+		limits := make([]domain.Limits, len(out))
+		for i, g := range out {
+			ps[i], limits[i] = g.P, g.Limits
+		}
+		broken := domain.ApplyRules(ps, limits, rules)
+		for i, g := range out {
+			sp := SPCProportion{Proportion: g, Rules: broken[i], OutOfCtrl: g.P > g.Limits.UCL || g.P < g.Limits.LCL}
+			if sp.OutOfCtrl {
+				series.OutOfControlCount++
+			}
+			if len(broken[i]) > 0 {
+				series.RuleBreaks++
+			}
+			series.Proportions = append(series.Proportions, sp)
+		}
+		if len(out) > 0 {
+			series.Mean = out[0].Limits.Center
+		}
+	}
+	if chart != ChartP {
+		series.Cp, series.Cpk = capability(mean, std, opts.LSL, opts.USL)
+	}
+	return series, nil
+}
+
+func subgroupBy(v string) string {
+	switch strings.TrimSpace(v) {
+	case "sample", "day":
+		return v
+	default:
+		return "batch"
+	}
+}
+
+func subgroupKey(p SPCPoint, by string) string {
+	switch by {
+	case "sample":
+		return p.Subgroup
+	case "day":
+		if len(p.Timestamp) >= 10 {
+			return p.Timestamp[:10]
+		}
+		return p.Timestamp
+	default:
+		if p.Batch == "" {
+			return p.Subgroup
+		}
+		return p.Batch
+	}
+}
+
+// groupPoints forms subgroups in the order they were first seen.
+func groupPoints(points []SPCPoint, by string) ([]domain.Subgroup, map[string]string) {
+	index := map[string]int{}
+	firstSeen := map[string]string{}
+	var groups []domain.Subgroup
+	for _, p := range points {
+		k := subgroupKey(p, by)
+		i, ok := index[k]
+		if !ok {
+			i = len(groups)
+			index[k] = i
+			firstSeen[k] = p.Timestamp
+			groups = append(groups, domain.Subgroup{Key: k})
+		}
+		groups[i].Values = append(groups[i].Values, p.Value)
+	}
+	return groups, firstSeen
+}
+
+/*
+spcPoints reads one parameter's readings, oldest first, from every table that
+records it: physical tests (moisture), cupping sessions (cup score), green
+gradings (021 metrics) and measurements. Measurement parameters are free text,
+so they are matched by CanonicalParameter in Go; the scan is capped.
+*/
+func (s *Store) spcPoints(ctx context.Context, metric string, days int, batchID string) ([]SPCPoint, error) {
 	var points []SPCPoint
 	appendRows := func(q string, args ...any) error {
 		rows, err := s.pool.Query(ctx, q, args...)
@@ -80,48 +339,44 @@ func (s *Store) SPC(ctx context.Context, opts SPCOptions) (SPCSeries, error) {
 		}
 		defer rows.Close()
 		for rows.Next() {
-			var ts, subgroup string
-			var val float64
-			if err := rows.Scan(&ts, &val, &subgroup); err != nil {
+			var p SPCPoint
+			if err := rows.Scan(&p.Timestamp, &p.Value, &p.Subgroup, &p.Ref, &p.Batch); err != nil {
 				return err
 			}
-			points = append(points, SPCPoint{Timestamp: ts, Value: val, Subgroup: subgroup})
+			points = append(points, p)
 		}
 		return rows.Err()
 	}
-
 	switch metric {
 	case "moisture":
 		if err := appendRows(`
-			SELECT tested_at::text, moisture_pct::float8, sample_business_id
+			SELECT tested_at::text, moisture_pct::float8, sample_business_id, business_id, batch_business_id
 			FROM qc_physical_tests
 			WHERE moisture_pct IS NOT NULL
 			  AND tested_at >= NOW() - ($1::int || ' days')::interval
 			  AND ($2 = '' OR batch_business_id = $2)`, days, batchID); err != nil {
-			return SPCSeries{}, err
+			return nil, err
 		}
 	case "cup_score":
 		if err := appendRows(`
-			SELECT created_at::text, total_score::float8, sample_business_id
+			SELECT created_at::text, total_score::float8, sample_business_id, business_id, batch_business_id
 			FROM qc_cupping_sessions
 			WHERE created_at >= NOW() - ($1::int || ' days')::interval
 			  AND ($2 = '' OR batch_business_id = $2)`, days, batchID); err != nil {
-			return SPCSeries{}, err
+			return nil, err
 		}
 	}
-
 	// Green gradings (021) carry their derived metrics by canonical name.
 	if err := appendRows(`
-		SELECT graded_at::text, (metrics->>$3)::float8, sample_business_id
+		SELECT graded_at::text, (metrics->>$3)::float8, sample_business_id, business_id, batch_business_id
 		FROM qc_green_gradings
 		WHERE status <> 'void' AND metrics ? $3
 		  AND graded_at >= NOW() - ($1::int || ' days')::interval
 		  AND ($2 = '' OR batch_business_id = $2)`, days, batchID, metric); err != nil {
-		return SPCSeries{}, err
+		return nil, err
 	}
-
 	rows, err := s.pool.Query(ctx, `
-		SELECT created_at::text, value_num::float8, sample_business_id, parameter
+		SELECT created_at::text, value_num::float8, sample_business_id, business_id, batch_business_id, parameter
 		FROM qc_lab_measurements
 		WHERE value_num IS NOT NULL AND status <> 'void'
 		  AND created_at >= NOW() - ($1::int || ' days')::interval
@@ -129,67 +384,67 @@ func (s *Store) SPC(ctx context.Context, opts SPCOptions) (SPCSeries, error) {
 		ORDER BY created_at DESC
 		LIMIT $3`, days, batchID, spcScanLimit)
 	if err != nil {
-		return SPCSeries{}, err
+		return nil, err
 	}
 	err = func() error {
 		defer rows.Close()
 		for rows.Next() {
-			var ts, subgroup, parameter string
-			var val float64
-			if err := rows.Scan(&ts, &val, &subgroup, &parameter); err != nil {
+			var p SPCPoint
+			var parameter string
+			if err := rows.Scan(&p.Timestamp, &p.Value, &p.Subgroup, &p.Ref, &p.Batch, &parameter); err != nil {
 				return err
 			}
 			if CanonicalParameter(parameter) == metric {
-				points = append(points, SPCPoint{Timestamp: ts, Value: val, Subgroup: subgroup})
+				points = append(points, p)
 			}
 		}
 		return rows.Err()
 	}()
 	if err != nil {
-		return SPCSeries{}, err
+		return nil, err
 	}
-	// Both sources render timestamps the same way (timestamptz::text in one
+	// Every source renders timestamps the same way (timestamptz::text in one
 	// session), so a string sort is a time sort.
 	sort.SliceStable(points, func(i, j int) bool { return points[i].Timestamp < points[j].Timestamp })
+	return points, nil
+}
 
-	values := make([]float64, len(points))
-	for i, p := range points {
-		values[i] = p.Value
+/*
+verdictPoints reads every judged record — measurements, incoming inspections,
+in-process checks, green gradings — as a 1 (fail) or 0 (pass), for the
+failure-rate p chart. Records nobody judged (no spec, not numeric) are not
+inspections and are left out.
+*/
+func (s *Store) verdictPoints(ctx context.Context, days int, batchID string) ([]SPCPoint, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT ts, CASE WHEN verdict = 'fail' THEN 1 ELSE 0 END::float8, subgroup, ref, batch FROM (
+			SELECT created_at::text ts, verdict, sample_business_id subgroup, business_id ref, batch_business_id batch
+			FROM qc_lab_measurements WHERE status <> 'void' AND created_at >= NOW() - ($1::int || ' days')::interval
+			UNION ALL
+			SELECT created_at::text, verdict, source_lot, business_id, source_lot
+			FROM qc_incoming_inspections WHERE created_at >= NOW() - ($1::int || ' days')::interval
+			UNION ALL
+			SELECT created_at::text, verdict, batch_ref, business_id, batch_ref
+			FROM qc_in_process_checks WHERE created_at >= NOW() - ($1::int || ' days')::interval
+			UNION ALL
+			SELECT graded_at::text, verdict, sample_business_id, business_id, batch_business_id
+			FROM qc_green_gradings WHERE status <> 'void' AND graded_at >= NOW() - ($1::int || ' days')::interval
+		) v
+		WHERE verdict IN ('pass', 'fail') AND ($2 = '' OR batch = $2)
+		ORDER BY ts`, days, batchID)
+	if err != nil {
+		return nil, err
 	}
-	series := SPCSeries{
-		Metric:          metric,
-		BatchBusinessID: batchID,
-		Days:            days,
-		Count:           len(values),
-		Points:          points,
-		USL:             opts.USL,
-		LSL:             opts.LSL,
-		SpecID:          opts.SpecID,
-	}
-	if series.Points == nil {
-		series.Points = []SPCPoint{}
-	}
-	if len(values) == 0 {
-		return series, nil
-	}
-	mean, std := meanStd(values)
-	series.Mean = round2(mean)
-	series.StdDev = round2(std)
-	series.UCL = round2(mean + 3*std)
-	series.LCL = round2(mean - 3*std)
-	for i := range series.Points {
-		v := series.Points[i].Value
-		if v > series.UCL || v < series.LCL {
-			series.Points[i].OutOfCtrl = true
-			series.OutOfControlCount++
+	defer rows.Close()
+	var points []SPCPoint
+	for rows.Next() {
+		var p SPCPoint
+		if err := rows.Scan(&p.Timestamp, &p.Value, &p.Subgroup, &p.Ref, &p.Batch); err != nil {
+			return nil, err
 		}
-		if !withinSpec(v, opts.LSL, opts.USL) {
-			series.Points[i].OutOfSpec = true
-			series.OutOfSpecCount++
-		}
+		points = append(points, p)
 	}
-	series.Cp, series.Cpk = capability(mean, std, opts.LSL, opts.USL)
-	return series, nil
+	return points, rows.Err()
 }
 
 // spcScanLimit caps how many measurement rows one chart reads.

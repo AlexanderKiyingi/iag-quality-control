@@ -3,7 +3,7 @@ package domain
 import "testing"
 
 func gf(v float64) *float64 { return &v }
-func gn(v int) *int { return &v }
+func gn(v int) *int         { return &v }
 
 func TestGradeGreenFullDefects(t *testing.T) {
 	r := GradeGreen(GreenInput{SampleGrams: 350, Defects: map[string]int{

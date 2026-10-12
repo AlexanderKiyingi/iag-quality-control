@@ -520,7 +520,12 @@ func (s *Store) raiseAutoActions(ctx context.Context, in autoActionInput) (*Auto
 	for _, en := range failed {
 		parts = append(parts, describeFailure(en))
 	}
-	title := fmt.Sprintf("Out of specification: %s (%s %s)", strings.Join(parts, "; "), in.SourceKind, in.SourceRef)
+	heading := "Out of specification"
+	if strings.HasPrefix(in.SourceKind, "SPC") {
+		// A point can be inside its spec and still out of control.
+		heading = "Out of statistical control"
+	}
+	title := fmt.Sprintf("%s: %s (%s %s)", heading, strings.Join(parts, "; "), in.SourceKind, in.SourceRef)
 	severity := "minor"
 	if ev.Action == domain.ActionHold {
 		severity = "major"
@@ -590,6 +595,9 @@ func describeFailure(en EvaluationEntry) string {
 	}
 	if en.USL != nil {
 		band = append(band, "USL "+strconv.FormatFloat(*en.USL, 'f', -1, 64))
+	}
+	if len(band) == 0 {
+		return fmt.Sprintf("%s %s", en.Parameter, val)
 	}
 	return fmt.Sprintf("%s %s (%s)", en.Parameter, val, strings.Join(band, ", "))
 }

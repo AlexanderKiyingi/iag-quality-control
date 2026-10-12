@@ -22,7 +22,12 @@ has no floor, so its Cpk is now the one-sided Cpu.
 func (h *QC) SPCAnalytics(c *gin.Context) {
 	metric := c.DefaultQuery("metric", "moisture")
 	days, _ := strconv.Atoi(c.DefaultQuery("days", "30"))
-	opts := store.SPCOptions{Metric: metric, BatchID: c.Query("batch_business_id"), Days: days}
+	opts := store.SPCOptions{Metric: metric, BatchID: c.Query("batch_business_id"), Days: days,
+		Chart: c.Query("chart"), SubgroupBy: c.Query("subgroup")}
+	// The parameter's own rules (022), unless the caller asks for others.
+	if settings, err := h.Store.GetSPCSettings(c.Request.Context(), metric); err == nil {
+		opts.Rules = settings.Rules
+	}
 	if v := c.Query("usl"); v != "" {
 		if f, err := strconv.ParseFloat(v, 64); err == nil {
 			opts.USL = &f

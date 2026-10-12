@@ -36,6 +36,7 @@ var changeLogEntities = map[string]string{
 	"cupping-sessions":     "qc_cupping_sessions",
 	"cupping-tables":       "qc_cupping_tables",
 	"green-gradings":       "qc_green_gradings",
+	"spc-settings":         "qc_spc_settings",
 	"measurements":         "qc_lab_measurements",
 	"incoming-inspections": "qc_incoming_inspections",
 	"in-process-checks":    "qc_in_process_checks",

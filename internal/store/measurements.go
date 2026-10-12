@@ -38,6 +38,7 @@ type LabMeasurement struct {
 	UpdatedAt      time.Time         `json:"updated_at"`
 	// What a failing reading set in motion; only on the write response.
 	AutoActions *AutoActions `json:"auto_actions,omitempty"`
+	SPCAlerts   []SPCAlert   `json:"spc_alerts,omitempty"`
 }
 
 // CreateLabMeasurementInput is the write shape. A measurement is an event, so

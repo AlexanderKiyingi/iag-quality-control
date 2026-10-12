@@ -83,6 +83,12 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 		v1.GET("/calendar", middleware.RequirePermission("qc.view_calendar"), qc.Calendar)
 		v1.GET("/analytics/spc", middleware.RequirePermission("qc.view_analytics"), qc.SPCAnalytics)
 		v1.GET("/analytics/spc/parameters", middleware.RequirePermission("qc.view_analytics"), qc.SPCParameters)
+		// 022: control-chart alarms, per-parameter rules, the quality dashboard.
+		v1.GET("/analytics/quality-dashboard", middleware.RequirePermission("qc.view_reports"), qc.QualityDashboard)
+		v1.GET("/spc-alerts", middleware.RequirePermission("qc.view_analytics"), qc.ListSPCAlerts)
+		v1.POST("/spc-alerts/:id/acknowledge", middleware.RequirePermission("qc.record_tests"), qc.AcknowledgeSPCAlert)
+		v1.GET("/spc-settings/:parameter", middleware.RequirePermission("qc.view_analytics"), qc.GetSPCSettings)
+		v1.PUT("/spc-settings/:parameter", middleware.RequirePermission("qc.change_specifications"), qc.PutSPCSettings)
 
 		v1.GET("/reports/day-summary", middleware.RequirePermission("qc.view_reports"), qc.DayReport)
 		v1.GET("/reports/day-summary/pdf", middleware.RequirePermission("qc.export_pdf"), qc.DayReportPDF)
@@ -226,6 +232,7 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 		// Before/after history of the quality record (017). Read-only: the log
 		// is append-only in the database itself.
 		v1.GET("/change-log", middleware.RequirePermission("qc.view_change_log"), qc.ListChangeLog)
+		v1.GET("/change-log/pdf", middleware.RequirePermission("qc.view_change_log"), qc.ChangeLogPDF)
 		// Electronic signatures (019). POST checks the register's own
 		// permission in the handler; the signature token is the second factor.
 		v1.GET("/signatures", middleware.RequirePermission("qc.view_change_log"), qc.ListSignatures)
