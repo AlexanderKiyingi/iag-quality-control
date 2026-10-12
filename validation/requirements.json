@@ -2,26 +2,273 @@
   "system": "IAG Quality Control (iag-quality-control + iag-lab)",
   "note": "User requirements traced to the automated tests that verify them. 'tests' are Go test functions in this repository (run with QC_TEST_DATABASE_URL for the *AgainstRealPostgres ones); 'oq' are the operational-qualification browser scripts in iag-lab/scripts/oq. TestRequirementsTraceToTests fails if a listed test no longer exists.",
   "requirements": [
-    {"id": "URS-ES-01", "area": "Electronic signatures", "statement": "A signature requires the signer to re-enter their password; the signature token is single-use and expires within 5 minutes.", "tests": ["TestVerify", "TestSignaturesAgainstRealPostgres"], "oq": ["esign.mjs"]},
-    {"id": "URS-ES-02", "area": "Electronic signatures", "statement": "Each signature records who, when, what it means and why, with a fingerprint of the record; signatures cannot be edited or deleted.", "tests": ["TestSignaturesAgainstRealPostgres"], "oq": ["esign.mjs"]},
-    {"id": "URS-ES-03", "area": "Electronic signatures", "statement": "A signed (approved / closed) record is locked against further edits.", "tests": ["TestSignaturesAgainstRealPostgres", "TestSupplierQualityAgainstRealPostgres"], "oq": ["esign.mjs", "suppliers.mjs"]},
-    {"id": "URS-AT-01", "area": "Audit trail", "statement": "Every change to the quality record is logged with before and after values, who made it and the reason given.", "tests": ["TestChangeLogAgainstRealPostgres", "TestSignaturesAgainstRealPostgres", "TestGreenGradingAgainstRealPostgres"], "oq": ["dashboards.mjs"]},
-    {"id": "URS-AT-02", "area": "Audit trail", "statement": "Changing an existing quality record requires a reason.", "tests": ["TestSignaturesAgainstRealPostgres", "TestSupplierQualityAgainstRealPostgres"], "oq": []},
-    {"id": "URS-AT-03", "area": "Audit trail", "statement": "The audit trail can be filtered and exported as a PDF for review.", "tests": ["TestRenderAuditTrail"], "oq": ["dashboards.mjs"]},
-    {"id": "URS-SP-01", "area": "Specifications", "statement": "Readings are judged against the active specification for their stage and grade; failures raise a non-conformance and, where configured, a hold.", "tests": ["TestSpecificationsAgainstRealPostgres", "TestCombineVerdicts", "TestWithinBand"], "oq": []},
-    {"id": "URS-SPC-01", "area": "Statistical process control", "statement": "Control charts (I-MR, X̄-R, X̄-S, p, c) use limits from short-term variation and mark Nelson rule breaks.", "tests": ["TestIMRUsesTheMovingRange", "TestXBarR", "TestPChartLimitsWidenForSmallSubgroups", "TestCChart", "TestRules", "TestSPCChartsAndAlarmsAgainstRealPostgres"], "oq": ["dashboards.mjs"]},
-    {"id": "URS-SPC-02", "area": "Statistical process control", "statement": "A new reading that breaks a control rule raises an alarm once, optionally with a non-conformance; alarms are acknowledged with a note.", "tests": ["TestSPCChartsAndAlarmsAgainstRealPostgres"], "oq": ["dashboards.mjs"]},
-    {"id": "URS-SUP-01", "area": "Supplier quality", "statement": "Incoming lots roll up into per-supplier scorecards with a recommended status and reasons; procurement owns the decision.", "tests": ["TestRecommendSupplierStatus", "TestSupplierQualityAgainstRealPostgres"], "oq": ["suppliers.mjs"]},
-    {"id": "URS-SUP-02", "area": "Supplier quality", "statement": "A supplier corrective-action request closes only by signature after its fix is verified effective.", "tests": ["TestSupplierQualityAgainstRealPostgres"], "oq": ["suppliers.mjs"]},
-    {"id": "URS-DOC-01", "area": "Document control", "statement": "Controlled documents are approved by signature; exactly one version is in force; superseded versions are retained.", "tests": ["TestDocumentControlAgainstRealPostgres"], "oq": ["documents.mjs"]},
-    {"id": "URS-DOC-02", "area": "Document control", "statement": "Results recorded by a method whose SOP is not in force are refused.", "tests": ["TestDocumentControlAgainstRealPostgres"], "oq": ["documents.mjs"]},
-    {"id": "URS-DOC-03", "area": "Document control", "statement": "Read-and-understood acknowledgements are recorded against the effective version.", "tests": ["TestDocumentControlAgainstRealPostgres"], "oq": ["documents.mjs"]},
-    {"id": "URS-SMP-01", "area": "Sampling", "statement": "Incoming inspections are sampled and judged by the ISO 2859-1 single-sampling normal plan for lot size, level and AQL.", "tests": ["TestCodeLetter", "TestTable2A", "TestNewSamplingPlan", "TestSamplingAndStabilityAgainstRealPostgres"], "oq": ["stability.mjs"]},
-    {"id": "URS-STB-01", "area": "Stability", "statement": "Stability pulls are scheduled from timepoints, reminded before they are due, and their results support an ICH Q1E shelf-life estimate.", "tests": ["TestShelfLifeDecreasingAgainstLowerLimit", "TestShelfLifeScatterShortensIt", "TestShelfLifeUpperLimitAndEdges", "TestSamplingAndStabilityAgainstRealPostgres"], "oq": ["stability.mjs"]},
-    {"id": "URS-CUP-01", "area": "Sensory", "statement": "Cupping supports the SCA CVA and 2004 forms, blind cup codes, calibration against a reference cupper, and panel agreement statistics.", "tests": ["TestCVAScoreMatchesTheStandardsReferencePoints", "TestValidateCVA", "TestCalibrationMeasuresAgainstTheReferenceNotTheMedian", "TestComputePanelStatsFlagsTheOddCupper", "TestCuppingTablesAgainstRealPostgres", "TestCuppingPanelAgainstRealPostgres"], "oq": ["cupping.mjs"]},
-    {"id": "URS-GRN-01", "area": "Green grading", "statement": "Green coffee is graded by SCA defect equivalents and screen distribution, judged against specs, and voided only with a reason.", "tests": ["TestGradeGreenFullDefects", "TestGradeGreenClasses", "TestGradeGreenScreens", "TestValidateGreen", "TestGreenGradingAgainstRealPostgres"], "oq": ["green.mjs"]},
-    {"id": "URS-COA-01", "area": "Certificates", "statement": "Certificates of analysis print in the customer's layout with results, specification and verdict, and carry their electronic signatures.", "tests": ["TestRenderCoA", "TestRenderTemplatedCoA", "TestCoATemplatesAndAlertRoutesAgainstRealPostgres"], "oq": ["esign.mjs"]},
-    {"id": "URS-ALR-01", "area": "Alerts", "statement": "Each kind of quality alert is routed to its configured audience; route changes need a reason.", "tests": ["TestCoATemplatesAndAlertRoutesAgainstRealPostgres"], "oq": []},
-    {"id": "URS-SEC-01", "area": "Access", "statement": "Every API call is authenticated; permissions are enforced, and fail closed in hardened environments.", "tests": ["TestRequireAuth_RejectsAnonymous", "TestRequirePermission_StrictRBAC", "TestStrictRBACTracksHardenedRuntime", "TestHardenedRuntime"], "oq": []}
+    {
+      "id": "URS-ES-01",
+      "area": "Electronic signatures",
+      "statement": "A signature requires the signer to re-enter their password; the signature token is single-use and expires within 5 minutes.",
+      "tests": [
+        "TestVerify",
+        "TestSignaturesAgainstRealPostgres"
+      ],
+      "oq": [
+        "esign.mjs"
+      ]
+    },
+    {
+      "id": "URS-ES-02",
+      "area": "Electronic signatures",
+      "statement": "Each signature records who, when, what it means and why, with a fingerprint of the record; signatures cannot be edited or deleted.",
+      "tests": [
+        "TestSignaturesAgainstRealPostgres"
+      ],
+      "oq": [
+        "esign.mjs"
+      ]
+    },
+    {
+      "id": "URS-ES-03",
+      "area": "Electronic signatures",
+      "statement": "A signed (approved / closed) record is locked against further edits.",
+      "tests": [
+        "TestSignaturesAgainstRealPostgres",
+        "TestSupplierQualityAgainstRealPostgres"
+      ],
+      "oq": [
+        "esign.mjs",
+        "suppliers.mjs"
+      ]
+    },
+    {
+      "id": "URS-AT-01",
+      "area": "Audit trail",
+      "statement": "Every change to the quality record is logged with before and after values, who made it and the reason given.",
+      "tests": [
+        "TestChangeLogAgainstRealPostgres",
+        "TestSignaturesAgainstRealPostgres",
+        "TestGreenGradingAgainstRealPostgres"
+      ],
+      "oq": [
+        "dashboards.mjs"
+      ]
+    },
+    {
+      "id": "URS-AT-02",
+      "area": "Audit trail",
+      "statement": "Changing an existing quality record requires a reason.",
+      "tests": [
+        "TestSignaturesAgainstRealPostgres",
+        "TestSupplierQualityAgainstRealPostgres"
+      ],
+      "oq": []
+    },
+    {
+      "id": "URS-AT-03",
+      "area": "Audit trail",
+      "statement": "The audit trail can be filtered and exported as a PDF for review.",
+      "tests": [
+        "TestRenderAuditTrail"
+      ],
+      "oq": [
+        "dashboards.mjs"
+      ]
+    },
+    {
+      "id": "URS-SP-01",
+      "area": "Specifications",
+      "statement": "Readings are judged against the active specification for their stage and grade; failures raise a non-conformance and, where configured, a hold.",
+      "tests": [
+        "TestSpecificationsAgainstRealPostgres",
+        "TestCombineVerdicts",
+        "TestWithinBand"
+      ],
+      "oq": []
+    },
+    {
+      "id": "URS-SPC-01",
+      "area": "Statistical process control",
+      "statement": "Control charts (I-MR, X̄-R, X̄-S, p, c) use limits from short-term variation and mark Nelson rule breaks.",
+      "tests": [
+        "TestIMRUsesTheMovingRange",
+        "TestXBarR",
+        "TestPChartLimitsWidenForSmallSubgroups",
+        "TestCChart",
+        "TestRules",
+        "TestSPCChartsAndAlarmsAgainstRealPostgres"
+      ],
+      "oq": [
+        "dashboards.mjs"
+      ]
+    },
+    {
+      "id": "URS-SPC-02",
+      "area": "Statistical process control",
+      "statement": "A new reading that breaks a control rule raises an alarm once, optionally with a non-conformance; alarms are acknowledged with a note.",
+      "tests": [
+        "TestSPCChartsAndAlarmsAgainstRealPostgres"
+      ],
+      "oq": [
+        "dashboards.mjs"
+      ]
+    },
+    {
+      "id": "URS-SUP-01",
+      "area": "Supplier quality",
+      "statement": "Incoming lots roll up into per-supplier scorecards with a recommended status and reasons; procurement owns the decision.",
+      "tests": [
+        "TestRecommendSupplierStatus",
+        "TestSupplierQualityAgainstRealPostgres"
+      ],
+      "oq": [
+        "suppliers.mjs"
+      ]
+    },
+    {
+      "id": "URS-SUP-02",
+      "area": "Supplier quality",
+      "statement": "A supplier corrective-action request closes only by signature after its fix is verified effective.",
+      "tests": [
+        "TestSupplierQualityAgainstRealPostgres"
+      ],
+      "oq": [
+        "suppliers.mjs"
+      ]
+    },
+    {
+      "id": "URS-DOC-01",
+      "area": "Document control",
+      "statement": "Controlled documents are approved by signature; exactly one version is in force; superseded versions are retained.",
+      "tests": [
+        "TestDocumentControlAgainstRealPostgres"
+      ],
+      "oq": [
+        "documents.mjs"
+      ]
+    },
+    {
+      "id": "URS-DOC-02",
+      "area": "Document control",
+      "statement": "Results recorded by a method whose SOP is not in force are refused.",
+      "tests": [
+        "TestDocumentControlAgainstRealPostgres"
+      ],
+      "oq": [
+        "documents.mjs"
+      ]
+    },
+    {
+      "id": "URS-DOC-03",
+      "area": "Document control",
+      "statement": "Read-and-understood acknowledgements are recorded against the effective version.",
+      "tests": [
+        "TestDocumentControlAgainstRealPostgres"
+      ],
+      "oq": [
+        "documents.mjs"
+      ]
+    },
+    {
+      "id": "URS-SMP-01",
+      "area": "Sampling",
+      "statement": "Incoming inspections are sampled and judged by the ISO 2859-1 single-sampling normal plan for lot size, level and AQL.",
+      "tests": [
+        "TestCodeLetter",
+        "TestTable2A",
+        "TestNewSamplingPlan",
+        "TestSamplingAndStabilityAgainstRealPostgres"
+      ],
+      "oq": [
+        "stability.mjs"
+      ]
+    },
+    {
+      "id": "URS-STB-01",
+      "area": "Stability",
+      "statement": "Stability pulls are scheduled from timepoints, reminded before they are due, and their results support an ICH Q1E shelf-life estimate.",
+      "tests": [
+        "TestShelfLifeDecreasingAgainstLowerLimit",
+        "TestShelfLifeScatterShortensIt",
+        "TestShelfLifeUpperLimitAndEdges",
+        "TestSamplingAndStabilityAgainstRealPostgres"
+      ],
+      "oq": [
+        "stability.mjs"
+      ]
+    },
+    {
+      "id": "URS-CUP-01",
+      "area": "Sensory",
+      "statement": "Cupping supports the SCA CVA and 2004 forms, blind cup codes, calibration against a reference cupper, and panel agreement statistics.",
+      "tests": [
+        "TestCVAScoreMatchesTheStandardsReferencePoints",
+        "TestValidateCVA",
+        "TestCalibrationMeasuresAgainstTheReferenceNotTheMedian",
+        "TestComputePanelStatsFlagsTheOddCupper",
+        "TestCuppingTablesAgainstRealPostgres",
+        "TestCuppingPanelAgainstRealPostgres"
+      ],
+      "oq": [
+        "cupping.mjs"
+      ]
+    },
+    {
+      "id": "URS-GRN-01",
+      "area": "Green grading",
+      "statement": "Green coffee is graded by SCA defect equivalents and screen distribution, judged against specs, and voided only with a reason.",
+      "tests": [
+        "TestGradeGreenFullDefects",
+        "TestGradeGreenClasses",
+        "TestGradeGreenScreens",
+        "TestValidateGreen",
+        "TestGreenGradingAgainstRealPostgres"
+      ],
+      "oq": [
+        "green.mjs"
+      ]
+    },
+    {
+      "id": "URS-COA-01",
+      "area": "Certificates",
+      "statement": "Certificates of analysis print in the customer's layout with results, specification and verdict, and carry their electronic signatures.",
+      "tests": [
+        "TestRenderCoA",
+        "TestRenderTemplatedCoA",
+        "TestCoATemplatesAndAlertRoutesAgainstRealPostgres"
+      ],
+      "oq": [
+        "esign.mjs"
+      ]
+    },
+    {
+      "id": "URS-ALR-01",
+      "area": "Alerts",
+      "statement": "Each kind of quality alert is routed to its configured audience; route changes need a reason.",
+      "tests": [
+        "TestCoATemplatesAndAlertRoutesAgainstRealPostgres"
+      ],
+      "oq": []
+    },
+    {
+      "id": "URS-TRN-01",
+      "area": "Training",
+      "statement": "A result recorded by a method is checked against the recorder's qualification: a completed, in-date course for the method in HR (iag-erp) and the method's SOP in force read; unqualified results are refused or flagged as configured.",
+      "tests": [
+        "TestQualificationAgainstRealPostgres"
+      ],
+      "oq": [
+        "qualifications.mjs"
+      ]
+    },
+    {
+      "id": "URS-SEC-01",
+      "area": "Access",
+      "statement": "Every API call is authenticated; permissions are enforced, and fail closed in hardened environments.",
+      "tests": [
+        "TestRequireAuth_RejectsAnonymous",
+        "TestRequirePermission_StrictRBAC",
+        "TestStrictRBACTracksHardenedRuntime",
+        "TestHardenedRuntime"
+      ],
+      "oq": []
+    }
   ]
 }

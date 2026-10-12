@@ -31,6 +31,7 @@ type RouterDeps struct {
 	Audit        *auditlog.Store
 	SCM          *clients.SCM
 	MES          *clients.MES
+	ERP          *clients.ERP
 	PlatformAuth *middleware.PlatformAuth
 	StrictRBAC   bool
 }
@@ -69,6 +70,7 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 		Outbox: deps.Outbox,
 		SCM:    deps.SCM,
 		MES:    deps.MES,
+		ERP:    deps.ERP,
 	}
 	if deps.PlatformAuth != nil {
 		qc.SignatureVerifier = deps.PlatformAuth
@@ -91,6 +93,9 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 		v1.GET("/calendar", middleware.RequirePermission("qc.view_calendar"), qc.Calendar)
 		v1.GET("/analytics/spc", middleware.RequirePermission("qc.view_analytics"), qc.SPCAnalytics)
 		v1.GET("/analytics/spc/parameters", middleware.RequirePermission("qc.view_analytics"), qc.SPCParameters)
+		// Phase 5: qualification to run a method (training in iag-erp + SOP read).
+		v1.GET("/qualification-matrix", middleware.RequirePermission("qc.view_technicians"), qc.QualificationMatrix)
+		v1.GET("/qualification-check", middleware.RequirePermission("qc.record_tests"), qc.QualificationCheckFor)
 		// 026: customer CoA templates; alert routing.
 		v1.GET("/coa-templates", middleware.RequirePermission("qc.view_coa"), qc.ListCoATemplates)
 		v1.POST("/coa-templates", middleware.RequirePermission("qc.issue_coa"), qc.PutCoATemplate)

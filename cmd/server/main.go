@@ -73,6 +73,7 @@ func main() {
 
 	scm := clients.NewSCM(cfg.UpstreamSCM, cfg.AuthTokenURL, cfg.ServiceClientID, cfg.ServiceClientSecret)
 	mes := clients.NewMES(cfg.UpstreamMES, cfg.AuthTokenURL, cfg.ServiceClientID, cfg.ServiceClientSecret)
+	erp := clients.NewERP(cfg.UpstreamERP, cfg.AuthTokenURL, cfg.ServiceClientID, cfg.ServiceClientSecret)
 
 	var verifier *authclient.Verifier
 	if cfg.AuthMode == "jwt" {
@@ -108,6 +109,7 @@ func main() {
 		Audit:        auditStore,
 		SCM:          scm,
 		MES:          mes,
+		ERP:          erp,
 		PlatformAuth: platformAuth,
 		StrictRBAC:   cfg.StrictRBAC(),
 		JobsContext:  ctx,
