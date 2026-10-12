@@ -91,6 +91,14 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 		v1.GET("/calendar", middleware.RequirePermission("qc.view_calendar"), qc.Calendar)
 		v1.GET("/analytics/spc", middleware.RequirePermission("qc.view_analytics"), qc.SPCAnalytics)
 		v1.GET("/analytics/spc/parameters", middleware.RequirePermission("qc.view_analytics"), qc.SPCParameters)
+		// 026: customer CoA templates; alert routing.
+		v1.GET("/coa-templates", middleware.RequirePermission("qc.view_coa"), qc.ListCoATemplates)
+		v1.POST("/coa-templates", middleware.RequirePermission("qc.issue_coa"), qc.PutCoATemplate)
+		v1.GET("/coa-templates/:id", middleware.RequirePermission("qc.view_coa"), qc.GetCoATemplate)
+		v1.PUT("/coa-templates/:id", middleware.RequirePermission("qc.issue_coa"), qc.PutCoATemplate)
+		v1.GET("/coa-templates/:id/preview", middleware.RequirePermission("qc.export_pdf"), qc.PreviewCoATemplate)
+		v1.GET("/alert-routes", middleware.RequirePermission("qc.view_compliance"), qc.ListAlertRoutes)
+		v1.PUT("/alert-routes/:kind", middleware.RequirePermission("qc.change_specifications"), qc.UpdateAlertRoute)
 		// 025: controlled documents. Approval is a signature (POST /signatures,
 		// entity document-versions, meaning approved / rejected).
 		v1.GET("/documents", middleware.RequirePermission("qc.view_compliance"), qc.ListDocuments)

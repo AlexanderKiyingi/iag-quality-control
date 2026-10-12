@@ -149,11 +149,11 @@ func (h *QC) ApproveCertification(c *gin.Context) {
 	// Certification requests name their approver, not an addressable requester,
 	// so this goes to the quality desk.
 	if issued {
-		h.notifyAlert(c.Request.Context(), "approval.decision",
+		h.notifyAlert(c.Request.Context(), "certification", "approval.decision",
 			"Certification approved: "+req.BusinessID,
 			"Certification request "+req.BusinessID+" was approved and CoA "+coa.CoaNumber+" issued.")
 	} else {
-		h.notifyAlert(c.Request.Context(), "approval.pending",
+		h.notifyAlert(c.Request.Context(), "certification", "approval.pending",
 			"Certification awaiting approval: "+req.BusinessID,
 			"Certification request "+req.BusinessID+" was advanced by "+middleware.ActorLabel(c)+
 				" and is awaiting the next approval stage.")

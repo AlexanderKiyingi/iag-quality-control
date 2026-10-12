@@ -106,6 +106,9 @@ type CoA struct {
 	IssuedBy        string    `json:"issued_by"`
 	IssuedAt        time.Time `json:"issued_at"`
 	Status          string    `json:"status"`
+	// Migration 026: who the certificate is for, and the layout it prints in.
+	CustomerRef string `json:"customer_ref"`
+	TemplateRef string `json:"template_ref"`
 }
 
 type CreateSampleInput struct {
@@ -246,6 +249,8 @@ type CreateCoAInput struct {
 	CoaNumber       string
 	DocumentRef     string
 	IssuedBy        string
+	CustomerRef     string
+	TemplateRef     string
 }
 
 type RecordLabResultInput struct {

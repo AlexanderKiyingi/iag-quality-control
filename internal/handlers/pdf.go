@@ -46,6 +46,19 @@ func (h *QC) CoAPDF(c *gin.Context) {
 		}
 	}
 	payload.Signatures = h.coaSignatureLines(c.Request.Context(), coa.CoaNumber)
+	tpl, ok, err := h.Store.ResolveCoATemplate(c.Request.Context(), coa.TemplateRef, coa.CustomerRef)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not load the certificate template"})
+		return
+	}
+	if ok {
+		layout, err := h.coaLayout(c.Request.Context(), tpl, coa.BatchBusinessID, coa.CustomerRef, payload.Grade)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not gather the batch's results"})
+			return
+		}
+		payload.Template = layout
+	}
 	raw, err := pdf.RenderCoA(payload)
 	writePDFResponse(c, safeFilename(coa.CoaNumber)+".pdf", raw, err)
 }

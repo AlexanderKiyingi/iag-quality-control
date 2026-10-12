@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -53,6 +54,8 @@ func (h *QC) refreshSupplier(ctx context.Context, supplier string) {
 	if err := h.publish(ctx, "qc.supplier.scorecard", payload); err != nil {
 		log.Printf("quality-control: publish scorecard for %s: %v", supplier, err)
 	}
+	h.notifyAlert(ctx, "supplier", "qc.alert", "Supplier "+card.SupplierRef+": quality recommends "+card.Recommendation,
+		strings.Join(card.Reasons, "; ")+". Procurement decides the supplier's status.")
 }
 
 func (h *QC) SupplierScorecards(c *gin.Context) {
