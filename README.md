@@ -203,6 +203,50 @@ inspections, in-process checks, NCs, CAPAs, release decisions) carries
 stores it beside the before→after diff, and `GET /change-log` takes
 `from` / `to` (YYYY-MM-DD) for reviewing a period.
 
+### Cupping tables, blind codes and the SCA CVA (020)
+
+A cupping table is one sitting: several samples, one panel, usually blind.
+
+| Method | Path | Permission | |
+|---|---|---|---|
+| GET | `/api/v1/cupping-tables?status=` | `qc.view_lab_summary` | list with cup and sheet counts |
+| POST | `/api/v1/cupping-tables` | `qc.record_tests` | `{title, form, blind, calibration, reference_evaluator, cups_per_sample, sample_business_ids[]}` |
+| GET | `/api/v1/cupping-tables/:id[?reveal=true]` | `qc.view_lab_summary` (+ `qc.change_sample` to reveal) | |
+| POST | `/api/v1/cupping-tables/:id/cups/:code/scores` | `qc.record_tests` | one cupper's sheet, by cup code |
+| POST | `/api/v1/cupping-tables/:id/close` | `qc.change_sample` | freezes sheets, reveals codes |
+| GET | `/api/v1/cupping-tables/:id/results` | `qc.view_lab_summary` | per-cup panel; 403 `table_blind` while hidden |
+
+- Each sample gets a session behind a random three-digit code. On an open blind table, nobody without `qc.change_sample` sees the sample, the batch or a running mean.
+- `form` is `sca_cva` (default for new tables) or `sca_2004`. A CVA sheet sends `hedonic` (1–9 for fragrance, aroma, flavor, aftertaste, acidity, sweetness, mouthfeel, overall), optional `intensity` (0–15), `descriptors`, `non_uniform_cups` and `defective_cups`. The score is 0.65625 × Σhedonic + 52.75 − 2 × non-uniform − 4 × defective, and is stored in `total_score` so the mean, SPC and the CoA read one number.
+- `client_ref` is the tablet's id for an offline sheet. A re-send of the same sheet is a 200 no-op; the same ref on a different sheet is a 409.
+- A closed table refuses sheets (409 `table_closed`).
+- On a calibration table, each cupper is measured against `reference_evaluator`, not the panel median.
+
+The blind is procedural, not cryptographic. Anyone who can list cupping sessions can still match a session id to its sample, so a cupper's screen should use only the table routes.
+
+### Green grading (021)
+
+A grading records what a grader counted in a green sample (350 g by default). The service works out the rest.
+
+| Method | Path | Permission | |
+|---|---|---|---|
+| GET | `/api/v1/green-grading-catalog` | `qc.view_lab_summary` | defect types (category, equivalent), screens, grades |
+| GET | `/api/v1/green-gradings?sample_business_id=&batch_business_id=&include_void=` | `qc.view_lab_summary` | |
+| GET | `/api/v1/green-gradings/:id` | `qc.view_lab_summary` | |
+| POST | `/api/v1/green-gradings` | `qc.record_tests` | `{sample_business_id, sample_grams, defects{type: beans}, screens{"18": g, …, "pan": g}, moisture_pct, water_activity, density_g_l, quakers, color, odor, grade_target, stage}` |
+| POST | `/api/v1/green-gradings/:id/void` | `qc.change_sample` | `{reason}`; a grading is voided and redone, never edited |
+
+- **Full defects** follow the SCA Green Arabica Defect Handbook. Each type has an equivalent (5 floaters = 1; 4 floaters = 0). Category 1 and Category 2 are kept apart. The total is normalised to 350 g.
+- **SCA grade:**
+  - `specialty`: no Category 1, ≤ 5 full defects, no quakers.
+  - `premium`: ≤ 8 full defects, ≤ 3 quakers.
+  - `exchange`: 9–23 full defects, ≤ 5 quakers.
+  - `below_standard`: 24–86 full defects.
+  - `off_grade`: more than 86.
+
+  The top three also need moisture of 9–13 %. Anything unmeasured is named in `grade_reasons`, not assumed good.
+- **Metrics:** `full_defects`, `category1_full_defects`, `category2_full_defects`, `quakers`, `moisture`, `water_activity`, `density_g_l` and `screen_<n>_plus_pct` are judged against the active specs (016) for the grading's stage (default `incoming`) and `grade_target`. Export grades are configured as specs, e.g. Screen 18 = `screen_18_plus_pct` LSL 90 for grade target "Screen 18". A failing flag/hold spec raises the NC and the hold. The metrics also appear in SPC. Moisture, water activity and full defects feed the batch rollup.
+
 ### Deleting
 
 `DELETE` exists on exactly five paths, and only while the row is still planning

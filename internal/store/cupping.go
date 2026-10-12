@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"iag-quality-control/backend/internal/domain"
 )
@@ -23,7 +24,7 @@ func (s *Store) CreateCupping(ctx context.Context, in CreateCuppingInput) (Cuppi
 	if err != nil {
 		return CuppingSession{}, err
 	}
-	sheets, err := normalizePanel(in.Scores)
+	sheets, err := normalizePanel(in.Scores, domain.FormSCA2004, 5)
 	if err != nil {
 		return CuppingSession{}, err
 	}
@@ -228,7 +229,10 @@ type panelSheet struct {
 
 // normalizePanel trims and validates the sheets: every sheet names its
 // evaluator, and nobody scores the same session twice.
-func normalizePanel(in []CuppingScoreInput) ([]panelSheet, error) {
+func normalizePanel(in []CuppingScoreInput, form string, cups int) ([]panelSheet, error) {
+	if form == "" {
+		form = domain.FormSCA2004
+	}
 	out := make([]panelSheet, 0, len(in))
 	seen := map[string]bool{}
 	for _, sc := range in {
@@ -242,12 +246,48 @@ func normalizePanel(in []CuppingScoreInput) ([]panelSheet, error) {
 		}
 		seen[key] = true
 		sc.Notes = strings.TrimSpace(sc.Notes)
-		out = append(out, panelSheet{
-			CuppingScoreInput: sc,
-			TotalScore:        domain.CalcSCATotal(sc.scoreMap(), sc.DefectCat1, sc.DefectCat2),
-		})
+		sc.ClientRef = strings.TrimSpace(sc.ClientRef)
+		sc.Descriptors = cleanDescriptors(sc.Descriptors)
+		if sc.Form == "" {
+			sc.Form = form
+		}
+		if sc.Form != form {
+			return nil, fmt.Errorf("%w: this session is scored on the %s form, not %s", ErrBadInput, form, sc.Form)
+		}
+		total := 0.0
+		switch sc.Form {
+		case domain.FormSCACVA:
+			cva := domain.CVASheet{Hedonic: sc.Hedonic, Intensity: sc.Intensity,
+				NonUniformCups: sc.NonUniformCups, DefectiveCups: sc.DefectiveCups}
+			if err := domain.ValidateCVA(cva, cups); err != nil {
+				return nil, fmt.Errorf("%w: %s's sheet: %v", ErrBadInput, sc.Evaluator, err)
+			}
+			total = domain.CVAScore(cva)
+		case domain.FormSCA2004:
+			total = domain.CalcSCATotal(sc.scoreMap2004(), sc.DefectCat1, sc.DefectCat2)
+		default:
+			return nil, fmt.Errorf("%w: unknown cupping form %q", ErrBadInput, sc.Form)
+		}
+		out = append(out, panelSheet{CuppingScoreInput: sc, TotalScore: total})
 	}
 	return out, nil
+}
+
+// cleanDescriptors trims, drops blanks and repeats, and caps the list — a
+// check-all-that-apply list is a handful of notes, not an essay.
+func cleanDescriptors(in []string) []string {
+	out := []string{}
+	seen := map[string]bool{}
+	for _, d := range in {
+		d = strings.TrimSpace(d)
+		k := strings.ToLower(d)
+		if d == "" || seen[k] || len(out) >= 30 {
+			continue
+		}
+		seen[k] = true
+		out = append(out, d)
+	}
+	return out
 }
 
 // withPanelMean replaces a session's scores with the mean of its sheets, and
@@ -289,6 +329,51 @@ func panelMeanTotal(sheets []panelSheet) float64 {
 }
 
 // CuppingPanel is a session's sheets and how far its evaluators agreed.
+const cuppingScoreCols = `session_business_id, evaluator, fragrance, flavor, aftertaste, acidity, body,
+	balance, uniformity, cleancup, sweetness, overall, defect_cat1, defect_cat2,
+	total_score, notes, created_at, form, cva, descriptors, non_uniform_cups, defective_cups, client_ref`
+
+func scanCuppingScore(row interface{ Scan(...any) error }, extra ...any) (CuppingScore, error) {
+	var sc CuppingScore
+	var cva, descriptors []byte
+	var clientRef *string
+	targets := []any{&sc.SessionBusinessID, &sc.Evaluator, &sc.Fragrance, &sc.Flavor,
+		&sc.Aftertaste, &sc.Acidity, &sc.Body, &sc.Balance, &sc.Uniformity, &sc.CleanCup,
+		&sc.Sweetness, &sc.Overall, &sc.DefectCat1, &sc.DefectCat2, &sc.TotalScore,
+		&sc.Notes, &sc.CreatedAt, &sc.Form, &cva, &descriptors, &sc.NonUniformCups, &sc.DefectiveCups, &clientRef}
+	if err := row.Scan(append(targets, extra...)...); err != nil {
+		return CuppingScore{}, err
+	}
+	var detail struct {
+		Hedonic   map[string]int `json:"hedonic"`
+		Intensity map[string]int `json:"intensity"`
+	}
+	_ = json.Unmarshal(cva, &detail)
+	sc.Hedonic, sc.Intensity = detail.Hedonic, detail.Intensity
+	_ = json.Unmarshal(descriptors, &sc.Descriptors)
+	if clientRef != nil {
+		sc.ClientRef = *clientRef
+	}
+	return sc, nil
+}
+
+// panelScoreOf is a stored sheet as the panel statistics read it: by the
+// score its own form computed, over the attributes that form has.
+func panelScoreOf(sc CuppingScore) domain.PanelScore {
+	total := sc.TotalScore
+	return domain.PanelScore{Evaluator: sc.Evaluator, Scores: sc.scoreMap(),
+		DefectCat1: sc.DefectCat1, DefectCat2: sc.DefectCat2, TotalScore: &total}
+}
+
+// panelStats is median-based, or measured against the reference cupper on a
+// calibration table.
+func panelStats(panel []domain.PanelScore, calibration bool, reference string, threshold float64) domain.PanelStats {
+	if calibration && reference != "" {
+		return domain.ComputeCalibration(panel, reference, threshold)
+	}
+	return domain.ComputePanelStats(panel, threshold)
+}
+
 type CuppingPanel struct {
 	SessionBusinessID string            `json:"session_business_id"`
 	Scores            []CuppingScore    `json:"scores"`
@@ -307,10 +392,12 @@ func (s *Store) GetCuppingPanel(ctx context.Context, sessionID string, threshold
 	if !exists {
 		return CuppingPanel{}, ErrNotFound
 	}
-	rows, err := s.pool.Query(ctx, `
-		SELECT session_business_id, evaluator, fragrance, flavor, aftertaste, acidity, body,
-		       balance, uniformity, cleancup, sweetness, overall, defect_cat1, defect_cat2,
-		       total_score, notes, created_at
+	var calibration bool
+	var reference string
+	_ = s.pool.QueryRow(ctx, `SELECT COALESCE(t.calibration, false), COALESCE(t.reference_evaluator, '')
+		FROM qc_cupping_sessions c LEFT JOIN qc_cupping_tables t ON t.business_id = c.table_business_id
+		WHERE c.business_id = $1`, sessionID).Scan(&calibration, &reference)
+	rows, err := s.pool.Query(ctx, `SELECT `+cuppingScoreCols+`
 		FROM qc_cupping_scores WHERE session_business_id = $1
 		ORDER BY evaluator`, sessionID)
 	if err != nil {
@@ -320,23 +407,17 @@ func (s *Store) GetCuppingPanel(ctx context.Context, sessionID string, threshold
 	panel := CuppingPanel{SessionBusinessID: sessionID, Scores: []CuppingScore{}}
 	var forStats []domain.PanelScore
 	for rows.Next() {
-		var sc CuppingScore
-		if err := rows.Scan(&sc.SessionBusinessID, &sc.Evaluator, &sc.Fragrance, &sc.Flavor,
-			&sc.Aftertaste, &sc.Acidity, &sc.Body, &sc.Balance, &sc.Uniformity, &sc.CleanCup,
-			&sc.Sweetness, &sc.Overall, &sc.DefectCat1, &sc.DefectCat2, &sc.TotalScore,
-			&sc.Notes, &sc.CreatedAt); err != nil {
+		sc, err := scanCuppingScore(rows)
+		if err != nil {
 			return CuppingPanel{}, err
 		}
 		panel.Scores = append(panel.Scores, sc)
-		forStats = append(forStats, domain.PanelScore{
-			Evaluator: sc.Evaluator, Scores: sc.scoreMap(),
-			DefectCat1: sc.DefectCat1, DefectCat2: sc.DefectCat2,
-		})
+		forStats = append(forStats, panelScoreOf(sc))
 	}
 	if err := rows.Err(); err != nil {
 		return CuppingPanel{}, err
 	}
-	panel.Stats = domain.ComputePanelStats(forStats, threshold)
+	panel.Stats = panelStats(forStats, calibration, reference, threshold)
 	return panel, nil
 }
 
@@ -359,19 +440,43 @@ save on that session.
 */
 func (s *Store) SaveCuppingScore(ctx context.Context, sessionID string, in CuppingScoreInput) (CuppingScore, error) {
 	sessionID = strings.TrimSpace(sessionID)
-	sheets, err := normalizePanel([]CuppingScoreInput{in})
+	// The session's form decides which sheet it takes; its table, if any,
+	// whether it still takes sheets at all.
+	var form, tableStatus string
+	var cups int
+	err := s.pool.QueryRow(ctx, `
+		SELECT c.form, COALESCE(t.status, 'open'), COALESCE(t.cups_per_sample, 5)
+		FROM qc_cupping_sessions c LEFT JOIN qc_cupping_tables t ON t.business_id = c.table_business_id
+		WHERE c.business_id = $1`, sessionID).Scan(&form, &tableStatus, &cups)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return CuppingScore{}, ErrNotFound
+	}
+	if err != nil {
+		return CuppingScore{}, err
+	}
+	if tableStatus == "closed" {
+		return CuppingScore{}, ErrTableClosed
+	}
+	sheets, err := normalizePanel([]CuppingScoreInput{in}, form, cups)
 	if err != nil {
 		return CuppingScore{}, err
 	}
 	sh := sheets[0]
-	var out CuppingScore
-	err = s.pool.QueryRow(ctx, `
+	cva, _ := json.Marshal(map[string]any{"hedonic": sh.Hedonic, "intensity": sh.Intensity})
+	descriptors, _ := json.Marshal(sh.Descriptors)
+	var clientRef *string
+	if sh.ClientRef != "" {
+		clientRef = &sh.ClientRef
+	}
+	row := s.pool.QueryRow(ctx, `
 		INSERT INTO qc_cupping_scores (
 			session_business_id, evaluator, fragrance, flavor, aftertaste, acidity, body,
 			balance, uniformity, cleancup, sweetness, overall, defect_cat1, defect_cat2,
-			total_score, notes
+			total_score, notes, form, cva, descriptors, non_uniform_cups, defective_cups,
+			client_ref, submitted_at
 		)
-		SELECT business_id, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
+		SELECT business_id, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
+		       $17, $18::jsonb, $19::jsonb, $20, $21, $22, NOW()
 		FROM qc_cupping_sessions WHERE business_id = $1
 		ON CONFLICT (session_business_id, evaluator) DO UPDATE SET
 			fragrance = EXCLUDED.fragrance, flavor = EXCLUDED.flavor,
@@ -380,20 +485,28 @@ func (s *Store) SaveCuppingScore(ctx context.Context, sessionID string, in Cuppi
 			cleancup = EXCLUDED.cleancup, sweetness = EXCLUDED.sweetness,
 			overall = EXCLUDED.overall, defect_cat1 = EXCLUDED.defect_cat1,
 			defect_cat2 = EXCLUDED.defect_cat2, total_score = EXCLUDED.total_score,
-			notes = EXCLUDED.notes
-		RETURNING session_business_id, evaluator, fragrance, flavor, aftertaste, acidity, body,
-		          balance, uniformity, cleancup, sweetness, overall, defect_cat1, defect_cat2,
-		          total_score, notes, created_at`,
+			notes = EXCLUDED.notes, form = EXCLUDED.form, cva = EXCLUDED.cva,
+			descriptors = EXCLUDED.descriptors, non_uniform_cups = EXCLUDED.non_uniform_cups,
+			defective_cups = EXCLUDED.defective_cups,
+			client_ref = COALESCE(EXCLUDED.client_ref, qc_cupping_scores.client_ref),
+			submitted_at = EXCLUDED.submitted_at
+		RETURNING `+cuppingScoreCols,
 		sessionID, sh.Evaluator, sh.Fragrance, sh.Flavor, sh.Aftertaste, sh.Acidity, sh.Body,
 		sh.Balance, sh.Uniformity, sh.CleanCup, sh.Sweetness, sh.Overall, sh.DefectCat1,
-		sh.DefectCat2, sh.TotalScore, sh.Notes,
-	).Scan(&out.SessionBusinessID, &out.Evaluator, &out.Fragrance, &out.Flavor, &out.Aftertaste,
-		&out.Acidity, &out.Body, &out.Balance, &out.Uniformity, &out.CleanCup, &out.Sweetness,
-		&out.Overall, &out.DefectCat1, &out.DefectCat2, &out.TotalScore, &out.Notes, &out.CreatedAt)
+		sh.DefectCat2, sh.TotalScore, sh.Notes, sh.Form, cva, descriptors,
+		sh.NonUniformCups, sh.DefectiveCups, clientRef,
+	)
+	out, err := scanCuppingScore(row)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return CuppingScore{}, ErrNotFound
 	}
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			// The same offline sheet id arriving for a different cup is not a
+			// re-sync; refuse it rather than move the sheet.
+			return CuppingScore{}, fmt.Errorf("%w: that offline sheet was already recorded for another cup", ErrConflict)
+		}
 		return CuppingScore{}, fmt.Errorf("save cupping score: %w", err)
 	}
 	if err := s.recomputeCuppingSession(ctx, sessionID); err != nil {
@@ -471,26 +584,31 @@ func (s *Store) ListCuppingScores(ctx context.Context, sessionID string, limit i
 		limit = 500
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT session_business_id, evaluator, fragrance, flavor, aftertaste, acidity, body,
-		       balance, uniformity, cleancup, sweetness, overall, defect_cat1, defect_cat2,
-		       total_score, notes, created_at
-		FROM qc_cupping_scores
-		WHERE ($1 = '' OR session_business_id = $1)
-		ORDER BY session_business_id DESC, evaluator
+		SELECT `+prefixed("sc", cuppingScoreCols)+`,
+		       COALESCE(t.calibration, false), COALESCE(t.reference_evaluator, '')
+		FROM qc_cupping_scores sc
+		JOIN qc_cupping_sessions c ON c.business_id = sc.session_business_id
+		LEFT JOIN qc_cupping_tables t ON t.business_id = c.table_business_id
+		WHERE ($1 = '' OR sc.session_business_id = $1)
+		ORDER BY sc.session_business_id DESC, sc.evaluator
 		LIMIT $2`, strings.TrimSpace(sessionID), limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var all []CuppingScore
+	type tableInfo struct {
+		calibration bool
+		reference   string
+	}
+	info := map[string]tableInfo{}
 	for rows.Next() {
-		var sc CuppingScore
-		if err := rows.Scan(&sc.SessionBusinessID, &sc.Evaluator, &sc.Fragrance, &sc.Flavor,
-			&sc.Aftertaste, &sc.Acidity, &sc.Body, &sc.Balance, &sc.Uniformity, &sc.CleanCup,
-			&sc.Sweetness, &sc.Overall, &sc.DefectCat1, &sc.DefectCat2, &sc.TotalScore,
-			&sc.Notes, &sc.CreatedAt); err != nil {
+		var ti tableInfo
+		sc, err := scanCuppingScore(rows, &ti.calibration, &ti.reference)
+		if err != nil {
 			return nil, err
 		}
+		info[sc.SessionBusinessID] = ti
 		all = append(all, sc)
 	}
 	if err := rows.Err(); err != nil {
@@ -498,14 +616,13 @@ func (s *Store) ListCuppingScores(ctx context.Context, sessionID string, limit i
 	}
 	bySession := map[string][]domain.PanelScore{}
 	for _, sc := range all {
-		bySession[sc.SessionBusinessID] = append(bySession[sc.SessionBusinessID], domain.PanelScore{
-			Evaluator: sc.Evaluator, Scores: sc.scoreMap(), DefectCat1: sc.DefectCat1, DefectCat2: sc.DefectCat2,
-		})
+		bySession[sc.SessionBusinessID] = append(bySession[sc.SessionBusinessID], panelScoreOf(sc))
 	}
 	devs := map[string]domain.EvaluatorDeviation{}
 	sizes := map[string]int{}
 	for session, panel := range bySession {
-		stats := domain.ComputePanelStats(panel, 0)
+		ti := info[session]
+		stats := panelStats(panel, ti.calibration, ti.reference, 0)
 		sizes[session] = stats.PanelSize
 		for _, ev := range stats.Evaluators {
 			devs[session+"\x00"+ev.Evaluator] = ev
@@ -518,4 +635,13 @@ func (s *Store) ListCuppingScores(ctx context.Context, sessionID string, limit i
 			PanelSize: sizes[sc.SessionBusinessID]})
 	}
 	return out, nil
+}
+
+// prefixed qualifies each column in a comma-separated list with a table alias.
+func prefixed(alias, cols string) string {
+	parts := strings.Split(cols, ",")
+	for i, p := range parts {
+		parts[i] = alias + "." + strings.TrimSpace(p)
+	}
+	return strings.Join(parts, ", ")
 }
