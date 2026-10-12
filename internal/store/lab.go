@@ -20,6 +20,8 @@ type LabMethod struct {
 	Attrs              map[string]any `json:"attrs"`
 	CreatedAt          time.Time      `json:"created_at"`
 	UpdatedAt          time.Time      `json:"updated_at"`
+	// SopRef names the controlled document (025) the method is run by.
+	SopRef string `json:"sop_ref"`
 }
 
 // LabRequest is work asked of the lab (migration 010).
@@ -57,6 +59,7 @@ type UpsertLabMethodInput struct {
 	AcceptanceCriteria *string
 	Status             *string
 	Attrs              map[string]any
+	SopRef             *string
 }
 
 // UpsertLabRequestInput is the write shape for a request; see
@@ -101,7 +104,7 @@ func attrsMap(b []byte) map[string]any {
 	return out
 }
 
-const labMethodCols = `business_id, name, version, scope, equipment, procedure, acceptance_criteria, status, attrs, created_at, updated_at`
+const labMethodCols = `business_id, name, version, scope, equipment, procedure, acceptance_criteria, status, attrs, created_at, updated_at, sop_ref`
 
 func (s *Store) ListLabMethods(ctx context.Context) ([]LabMethod, error) {
 	rows, err := s.pool.Query(ctx, `SELECT `+labMethodCols+` FROM qc_lab_methods ORDER BY updated_at DESC`)
@@ -114,7 +117,7 @@ func (s *Store) ListLabMethods(ctx context.Context) ([]LabMethod, error) {
 		var m LabMethod
 		var attrs []byte
 		if err := rows.Scan(&m.BusinessID, &m.Name, &m.Version, &m.Scope, &m.Equipment, &m.Procedure,
-			&m.AcceptanceCriteria, &m.Status, &attrs, &m.CreatedAt, &m.UpdatedAt); err != nil {
+			&m.AcceptanceCriteria, &m.Status, &attrs, &m.CreatedAt, &m.UpdatedAt, &m.SopRef); err != nil {
 			return nil, err
 		}
 		m.Attrs = attrsMap(attrs)
@@ -147,12 +150,12 @@ func (s *Store) UpsertLabMethod(ctx context.Context, in UpsertLabMethodInput) (L
 	var out LabMethod
 	var attrs []byte
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO qc_lab_methods (business_id, name, version, scope, equipment, procedure, acceptance_criteria, status, attrs, updated_at)
+		INSERT INTO qc_lab_methods (business_id, name, version, scope, equipment, procedure, acceptance_criteria, status, attrs, updated_at, sop_ref)
 		VALUES (
 			$1, $2,
 			COALESCE($3::text, '1'), COALESCE($4::text, ''), COALESCE($5::text, ''),
 			COALESCE($6::text, ''), COALESCE($7::text, ''), COALESCE($8::text, 'draft'),
-			COALESCE($9::jsonb, '{}'::jsonb), NOW()
+			COALESCE($9::jsonb, '{}'::jsonb), NOW(), COALESCE($10::text, '')
 		)
 		ON CONFLICT (business_id) DO UPDATE SET
 			name = EXCLUDED.name,
@@ -164,12 +167,13 @@ func (s *Store) UpsertLabMethod(ctx context.Context, in UpsertLabMethodInput) (L
 			status = COALESCE($8::text, qc_lab_methods.status),
 			attrs = CASE WHEN $9::jsonb IS NULL THEN qc_lab_methods.attrs
 			             ELSE qc_lab_methods.attrs || $9::jsonb END,
+			sop_ref = COALESCE($10::text, qc_lab_methods.sop_ref),
 			updated_at = NOW()
 		RETURNING `+labMethodCols,
 		id, name, blankToNil(in.Version), trimOptional(in.Scope), trimOptional(in.Equipment),
-		in.Procedure, in.AcceptanceCriteria, blankToNil(in.Status), attrsOptional(in.Attrs),
+		in.Procedure, in.AcceptanceCriteria, blankToNil(in.Status), attrsOptional(in.Attrs), trimOptional(in.SopRef),
 	).Scan(&out.BusinessID, &out.Name, &out.Version, &out.Scope, &out.Equipment, &out.Procedure,
-		&out.AcceptanceCriteria, &out.Status, &attrs, &out.CreatedAt, &out.UpdatedAt)
+		&out.AcceptanceCriteria, &out.Status, &attrs, &out.CreatedAt, &out.UpdatedAt, &out.SopRef)
 	out.Attrs = attrsMap(attrs)
 	return out, err
 }

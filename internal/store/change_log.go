@@ -39,6 +39,8 @@ var changeLogEntities = map[string]string{
 	"spc-settings":         "qc_spc_settings",
 	"scars":                "qc_scars",
 	"stability-results":    "qc_stability_results",
+	"documents":            "qc_controlled_documents",
+	"document-versions":    "qc_document_versions",
 	"measurements":         "qc_lab_measurements",
 	"incoming-inspections": "qc_incoming_inspections",
 	"in-process-checks":    "qc_in_process_checks",

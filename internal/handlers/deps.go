@@ -116,6 +116,9 @@ func respondStoreErr(c *gin.Context, err error) bool {
 	case errors.Is(err, store.ErrNeedsOverride):
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error(), "code": "override_required"})
 		return true
+	case errors.Is(err, store.ErrSOPNotEffective):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "sop_not_effective"})
+		return true
 	case errors.Is(err, store.ErrTableClosed):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "table_closed"})
 		return true

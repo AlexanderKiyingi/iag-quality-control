@@ -91,6 +91,19 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 		v1.GET("/calendar", middleware.RequirePermission("qc.view_calendar"), qc.Calendar)
 		v1.GET("/analytics/spc", middleware.RequirePermission("qc.view_analytics"), qc.SPCAnalytics)
 		v1.GET("/analytics/spc/parameters", middleware.RequirePermission("qc.view_analytics"), qc.SPCParameters)
+		// 025: controlled documents. Approval is a signature (POST /signatures,
+		// entity document-versions, meaning approved / rejected).
+		v1.GET("/documents", middleware.RequirePermission("qc.view_compliance"), qc.ListDocuments)
+		v1.POST("/documents", middleware.RequirePermission("qc.change_compliance"), qc.CreateDocument)
+		v1.GET("/documents/:id", middleware.RequirePermission("qc.view_compliance"), qc.GetDocument)
+		v1.PATCH("/documents/:id", middleware.RequirePermission("qc.change_compliance"), qc.UpdateDocument)
+		v1.POST("/documents/:id/obsolete", middleware.RequirePermission("qc.change_compliance"), qc.ObsoleteDocument)
+		v1.POST("/documents/:id/versions", middleware.RequirePermission("qc.change_compliance"), qc.NewDocumentVersion)
+		v1.PATCH("/documents/:id/versions/:v", middleware.RequirePermission("qc.change_compliance"), qc.UpdateDraft)
+		v1.POST("/documents/:id/versions/:v/submit", middleware.RequirePermission("qc.change_compliance"), qc.SubmitForReview)
+		v1.POST("/documents/:id/versions/:v/effective", middleware.RequirePermission("qc.change_compliance"), qc.MakeEffective)
+		v1.POST("/documents/:id/versions/:v/acknowledge", middleware.RequirePermission("qc.view_compliance"), qc.AcknowledgeDocument)
+		v1.GET("/document-acknowledgements", middleware.RequirePermission("qc.view_compliance"), qc.ListAcknowledgements)
 		// 023: supplier quality — scorecards from inspections, SCARs.
 		v1.GET("/supplier-scorecards", middleware.RequirePermission("qc.view_compliance"), qc.SupplierScorecards)
 		v1.GET("/scars", middleware.RequirePermission("qc.view_compliance"), qc.ListSCARs)
