@@ -332,6 +332,22 @@ SOPs, methods, forms, spec sheets, policies and work instructions under version 
 
 - **Lab methods** take `sop_ref`. A measurement recorded with a method whose SOP has no effective version within its review date is refused with 409 `sop_not_effective`.
 
+### Customer CoA templates, alert routing, validation (026)
+
+| Method | Path | Permission | |
+|---|---|---|---|
+| GET / POST | `/api/v1/coa-templates` | `qc.view_coa` / `qc.issue_coa` | `{name, customer_ref, is_default, title, header_note, footer_statement, parameters: [{parameter, label, unit, show_spec}], show_signatures}`. One active template per customer, plus one house default. Editing needs `change_reason` |
+| GET / PUT | `/api/v1/coa-templates/:id` | as above | |
+| GET | `/api/v1/coa-templates/:id/preview?batch_business_id=` | `qc.export_pdf` | the layout filled with the batch's latest results, marked PREVIEW |
+| POST | `/api/v1/coa` | as before | also takes `customer_ref` and `template_ref` |
+| GET | `/api/v1/alert-routes` | `qc.view_compliance` | one route per alert kind: `out_of_spec`, `spc`, `cupping`, `stability`, `certification`, `supplier` |
+| PUT | `/api/v1/alert-routes/:kind` | `qc.change_specifications` | `{audience, channel, recipient, enabled, change_reason}` |
+
+- **Which layout prints:** a CoA uses its own template, else its customer's, else the default, else the legacy layout.
+- **Templated results:** each printed result is the batch's latest reading (measurements, green grading, cupping, physical tests). Where asked, it shows the finished-goods spec and the verdict against it. A parameter that wasn't tested prints "not tested".
+- **Alerts:** `qc.alert.raised` carries the alert's `kind` and its route's audience. The seeded routes keep the old audience (`approvals.quality`).
+- **Validation pack:** see `validation/README.md`. It covers the requirements, the traceability generator and the IQ checklist.
+
 ### Deleting
 
 `DELETE` exists on exactly five paths, and only while the row is still planning

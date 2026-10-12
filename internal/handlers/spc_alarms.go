@@ -29,7 +29,7 @@ func (h *QC) checkSPC(ctx context.Context, ref, actor string, parameters ...stri
 		if a.NonConformance != "" {
 			body += " Non-conformance " + a.NonConformance + " raised."
 		}
-		h.notifyAlert(ctx, "qc.alert", "Out of control: "+a.Parameter, body)
+		h.notifyAlert(ctx, "spc", "qc.alert", "Out of control: "+a.Parameter, body)
 	}
 	return alerts
 }

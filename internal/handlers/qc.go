@@ -131,6 +131,9 @@ func (h *QC) PostCoA(c *gin.Context) {
 		CoaNumber       string `json:"coa_number" binding:"required"`
 		DocumentRef     string `json:"document_ref"`
 		Reason          string `json:"reason"`
+		// 026: the customer it is for, and optionally a specific layout.
+		CustomerRef string `json:"customer_ref"`
+		TemplateRef string `json:"template_ref"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -158,6 +161,8 @@ func (h *QC) PostCoA(c *gin.Context) {
 		BatchBusinessID: body.BatchBusinessID,
 		CoaNumber:       body.CoaNumber,
 		DocumentRef:     body.DocumentRef,
+		CustomerRef:     body.CustomerRef,
+		TemplateRef:     body.TemplateRef,
 		// The verified token's identity (actorOf), not ActorLabel: that reads
 		// an X-User-Email header any caller can set, and without one it records
 		// "authenticated" — a certificate signed by nobody in particular.

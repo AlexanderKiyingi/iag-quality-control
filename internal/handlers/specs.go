@@ -169,6 +169,6 @@ func (h *QC) announceAutoActions(ctx context.Context, auto *store.AutoActions, s
 	if auto.HoldEventID != "" {
 		what += fmt.Sprintf(" and %s placed on hold (%s)", auto.HoldRef, auto.HoldEventID)
 	}
-	h.notifyAlert(ctx, "qc.alert", "Out of specification: "+sourceRef,
+	h.notifyAlert(ctx, "out_of_spec", "qc.alert", "Out of specification: "+sourceRef,
 		what+" because "+sourceRef+" failed its specification.")
 }

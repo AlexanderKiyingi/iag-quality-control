@@ -53,16 +53,35 @@ func (h *QC) publish(ctx context.Context, eventType string, data map[string]any)
 // used until that audience is routed. Because the audience always travels, an
 // unset recipient is no longer a silent drop — notifications records it as an
 // unrouted audience and the admin UI lists it.
-func (h *QC) notifyAlert(ctx context.Context, templateID, title, body string) {
+func (h *QC) notifyAlert(ctx context.Context, kind, templateID, title, body string) {
 	recipient := strings.TrimSpace(os.Getenv("NOTIFY_DEFAULT_RECIPIENT"))
 	channel := strings.TrimSpace(os.Getenv("NOTIFY_CHANNEL"))
+	audience := "approvals.quality"
+	// 026: each kind of alert has its route; a disabled route sends nothing.
+	if h.Store != nil {
+		if route, err := h.Store.GetAlertRoute(ctx, kind); err == nil {
+			if !route.Enabled {
+				return
+			}
+			if route.Audience != "" {
+				audience = route.Audience
+			}
+			if route.Channel != "" {
+				channel = route.Channel
+			}
+			if route.Recipient != "" {
+				recipient = route.Recipient
+			}
+		}
+	}
 	if channel == "" {
 		channel = "email"
 	}
 	_ = h.publish(ctx, "qc.alert.raised", map[string]any{
 		"channel":    channel,
 		"recipient":  recipient,
-		"audience":   "approvals.quality",
+		"audience":   audience,
+		"kind":       kind,
 		"templateId": templateID,
 		"variables":  map[string]any{"Title": title, "Body": body},
 	})

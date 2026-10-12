@@ -1,0 +1,29 @@
+# Traceability matrix — IAG Quality Control (iag-quality-control + iag-lab)
+
+Generated 2026-10-12 21:53 UTC. User requirements traced to the automated tests that verify them. 'tests' are Go test functions in this repository (run with QC_TEST_DATABASE_URL for the *AgainstRealPostgres ones); 'oq' are the operational-qualification browser scripts in iag-lab/scripts/oq. TestRequirementsTraceToTests fails if a listed test no longer exists.
+
+| Requirement | Area | Statement | Verified by | Result | OQ script |
+|---|---|---|---|---|---|
+| URS-ES-01 | Electronic signatures | A signature requires the signer to re-enter their password; the signature token is single-use and expires within 5 minutes. | TestSignaturesAgainstRealPostgres<br>TestVerify | pass | esign.mjs |
+| URS-ES-02 | Electronic signatures | Each signature records who, when, what it means and why, with a fingerprint of the record; signatures cannot be edited or deleted. | TestSignaturesAgainstRealPostgres | pass | esign.mjs |
+| URS-ES-03 | Electronic signatures | A signed (approved / closed) record is locked against further edits. | TestSignaturesAgainstRealPostgres<br>TestSupplierQualityAgainstRealPostgres | pass | esign.mjs, suppliers.mjs |
+| URS-AT-01 | Audit trail | Every change to the quality record is logged with before and after values, who made it and the reason given. | TestChangeLogAgainstRealPostgres<br>TestGreenGradingAgainstRealPostgres<br>TestSignaturesAgainstRealPostgres | pass | dashboards.mjs |
+| URS-AT-02 | Audit trail | Changing an existing quality record requires a reason. | TestSignaturesAgainstRealPostgres<br>TestSupplierQualityAgainstRealPostgres | pass |  |
+| URS-AT-03 | Audit trail | The audit trail can be filtered and exported as a PDF for review. | TestRenderAuditTrail | pass | dashboards.mjs |
+| URS-SP-01 | Specifications | Readings are judged against the active specification for their stage and grade; failures raise a non-conformance and, where configured, a hold. | TestCombineVerdicts<br>TestSpecificationsAgainstRealPostgres<br>TestWithinBand | pass |  |
+| URS-SPC-01 | Statistical process control | Control charts (I-MR, X̄-R, X̄-S, p, c) use limits from short-term variation and mark Nelson rule breaks. | TestCChart<br>TestIMRUsesTheMovingRange<br>TestPChartLimitsWidenForSmallSubgroups<br>TestRules<br>TestSPCChartsAndAlarmsAgainstRealPostgres<br>TestXBarR | pass | dashboards.mjs |
+| URS-SPC-02 | Statistical process control | A new reading that breaks a control rule raises an alarm once, optionally with a non-conformance; alarms are acknowledged with a note. | TestSPCChartsAndAlarmsAgainstRealPostgres | pass | dashboards.mjs |
+| URS-SUP-01 | Supplier quality | Incoming lots roll up into per-supplier scorecards with a recommended status and reasons; procurement owns the decision. | TestRecommendSupplierStatus<br>TestSupplierQualityAgainstRealPostgres | pass | suppliers.mjs |
+| URS-SUP-02 | Supplier quality | A supplier corrective-action request closes only by signature after its fix is verified effective. | TestSupplierQualityAgainstRealPostgres | pass | suppliers.mjs |
+| URS-DOC-01 | Document control | Controlled documents are approved by signature; exactly one version is in force; superseded versions are retained. | TestDocumentControlAgainstRealPostgres | pass | documents.mjs |
+| URS-DOC-02 | Document control | Results recorded by a method whose SOP is not in force are refused. | TestDocumentControlAgainstRealPostgres | pass | documents.mjs |
+| URS-DOC-03 | Document control | Read-and-understood acknowledgements are recorded against the effective version. | TestDocumentControlAgainstRealPostgres | pass | documents.mjs |
+| URS-SMP-01 | Sampling | Incoming inspections are sampled and judged by the ISO 2859-1 single-sampling normal plan for lot size, level and AQL. | TestCodeLetter<br>TestNewSamplingPlan<br>TestSamplingAndStabilityAgainstRealPostgres<br>TestTable2A | pass | stability.mjs |
+| URS-STB-01 | Stability | Stability pulls are scheduled from timepoints, reminded before they are due, and their results support an ICH Q1E shelf-life estimate. | TestSamplingAndStabilityAgainstRealPostgres<br>TestShelfLifeDecreasingAgainstLowerLimit<br>TestShelfLifeScatterShortensIt<br>TestShelfLifeUpperLimitAndEdges | pass | stability.mjs |
+| URS-CUP-01 | Sensory | Cupping supports the SCA CVA and 2004 forms, blind cup codes, calibration against a reference cupper, and panel agreement statistics. | TestCVAScoreMatchesTheStandardsReferencePoints<br>TestCalibrationMeasuresAgainstTheReferenceNotTheMedian<br>TestComputePanelStatsFlagsTheOddCupper<br>TestCuppingPanelAgainstRealPostgres<br>TestCuppingTablesAgainstRealPostgres<br>TestValidateCVA | pass | cupping.mjs |
+| URS-GRN-01 | Green grading | Green coffee is graded by SCA defect equivalents and screen distribution, judged against specs, and voided only with a reason. | TestGradeGreenClasses<br>TestGradeGreenFullDefects<br>TestGradeGreenScreens<br>TestGreenGradingAgainstRealPostgres<br>TestValidateGreen | pass | green.mjs |
+| URS-COA-01 | Certificates | Certificates of analysis print in the customer's layout with results, specification and verdict, and carry their electronic signatures. | TestCoATemplatesAndAlertRoutesAgainstRealPostgres<br>TestRenderCoA<br>TestRenderTemplatedCoA | pass | esign.mjs |
+| URS-ALR-01 | Alerts | Each kind of quality alert is routed to its configured audience; route changes need a reason. | TestCoATemplatesAndAlertRoutesAgainstRealPostgres | pass |  |
+| URS-SEC-01 | Access | Every API call is authenticated; permissions are enforced, and fail closed in hardened environments. | TestHardenedRuntime<br>TestRequireAuth_RejectsAnonymous<br>TestRequirePermission_StrictRBAC<br>TestStrictRBACTracksHardenedRuntime | pass |  |
+
+**21 of 21 requirements verified** by this run. A skipped test (database tests without QC_TEST_DATABASE_URL) does not verify its requirement.

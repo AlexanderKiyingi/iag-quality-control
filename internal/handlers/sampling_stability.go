@@ -128,7 +128,7 @@ func (h *QC) stabilityReminderLoop(ctx context.Context, every time.Duration) {
 			log.Printf("quality-control: stability reminders: %v", err)
 		}
 		for _, d := range due {
-			h.notifyAlert(ctx, "qc.alert", fmt.Sprintf("Stability pull due: %s day %d", d.StudyBusinessID, d.PullDay),
+			h.notifyAlert(ctx, "stability", "qc.alert", fmt.Sprintf("Stability pull due: %s day %d", d.StudyBusinessID, d.PullDay),
 				fmt.Sprintf("The day-%d pull of stability study %s (%s) is due %s. Owner: %s.",
 					d.PullDay, d.StudyBusinessID, d.Product, d.DueDate, d.Owner))
 			if err := h.Store.MarkPullReminded(ctx, d.StudyBusinessID, d.PullDay); err != nil {

@@ -83,7 +83,7 @@ func (h *QC) PostCupping(c *gin.Context) {
 		if summary.CupScore != nil {
 			score = strconv.FormatFloat(*summary.CupScore, 'f', -1, 64)
 		}
-		h.notifyAlert(c.Request.Context(), "qc.alert",
+		h.notifyAlert(c.Request.Context(), "cupping", "qc.alert",
 			"Cupping failed for batch "+summary.BatchBusinessID,
 			"Batch "+summary.BatchBusinessID+" graded "+summary.Grade+" (SCA score "+score+").")
 	}
@@ -96,7 +96,7 @@ func (h *QC) PostCupping(c *gin.Context) {
 			// relied on: an uncalibrated cupper, or a cup that was not the
 			// coffee on the label.
 			if panel.Stats.OutlierCount > 0 {
-				h.notifyAlert(c.Request.Context(), "qc.alert",
+				h.notifyAlert(c.Request.Context(), "cupping", "qc.alert",
 					"Cupping panel disagreement on "+session.BusinessID,
 					strconv.Itoa(panel.Stats.OutlierCount)+" of "+strconv.Itoa(panel.Stats.PanelSize)+
 						" evaluators scored more than "+strconv.FormatFloat(panel.Stats.OutlierThreshold, 'f', -1, 64)+
