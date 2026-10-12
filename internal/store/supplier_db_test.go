@@ -101,8 +101,16 @@ func TestSupplierQualityAgainstRealPostgres(t *testing.T) {
 		if err != nil || scar.SupplierRef != supplier || scar.InspectionRef != bad.BusinessID || scar.Status != "open" || scar.DueDate == nil {
 			t.Fatalf("scar: %+v %v", scar, err)
 		}
-		if c := card(); c.CriticalSCARs != 1 || c.NonConformances < 1 {
+		if c := card(); c.CriticalSCARs != 1 || c.OpenSCARs != 1 || c.NonConformances < 1 {
 			t.Fatalf("scorecard counts the SCAR and NC: %+v", c)
+		}
+		// Named with its supplier too (as from the scorecard), the lot still comes with it.
+		named, err := s.CreateSCAR(ctx, SCARInput{NCRef: &nc.BusinessID, SupplierRef: str(supplier), Title: str("again"), Actor: "ana@iag"})
+		if err != nil || named.InspectionRef != bad.BusinessID {
+			t.Fatalf("named supplier: %+v %v", named, err)
+		}
+		if _, err := s.CreateSCAR(ctx, SCARInput{NCRef: &nc.BusinessID, SupplierRef: str("someone-else"), Title: str("x")}); !errors.Is(err, ErrBadInput) {
+			t.Fatalf("wrong supplier for the NC: %v", err)
 		}
 		if _, err := s.CreateSCAR(ctx, SCARInput{Title: str("no supplier")}); !errors.Is(err, ErrBadInput) {
 			t.Fatalf("no supplier: %v", err)
@@ -142,7 +150,7 @@ func TestSupplierQualityAgainstRealPostgres(t *testing.T) {
 		if _, err := s.UpdateSCAR(ctx, scar.BusinessID, SCARInput{Title: str("x"), ChangeReason: "late edit"}); !errors.Is(err, ErrLocked) {
 			t.Fatalf("a closed SCAR is locked: %v", err)
 		}
-		if c := card(); c.OpenSCARs != 0 {
+		if c := card(); c.OpenSCARs != 1 {
 			t.Fatalf("closed SCAR still open on the scorecard: %+v", c)
 		}
 	})

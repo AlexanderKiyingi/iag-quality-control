@@ -116,15 +116,20 @@ func (s *Store) CreateSCAR(ctx context.Context, in SCARInput) (SCAR, error) {
 		if _, err := s.GetNonConformance(ctx, nc); err != nil {
 			return SCAR{}, err
 		}
+		sup, insp, err := s.supplierForNC(ctx, nc)
+		if err != nil {
+			return SCAR{}, err
+		}
+		// The NC's lot names its supplier; a SCAR that names another one is
+		// addressed to the wrong company.
+		if supplier != "" && sup != "" && supplier != sup {
+			return SCAR{}, fmt.Errorf("%w: %s came from a lot supplied by %s, not %s", ErrBadInput, nc, sup, supplier)
+		}
 		if supplier == "" {
-			sup, insp, err := s.supplierForNC(ctx, nc)
-			if err != nil {
-				return SCAR{}, err
-			}
 			supplier = sup
-			if inspection == "" {
-				inspection = insp
-			}
+		}
+		if inspection == "" {
+			inspection = insp
 		}
 	}
 	if supplier == "" {
