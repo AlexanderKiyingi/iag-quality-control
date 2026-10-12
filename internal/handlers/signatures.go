@@ -53,6 +53,7 @@ var signPermissions = map[string]string{
 	"non-conformances":  "qc.change_compliance",
 	"capas":             "qc.change_compliance",
 	"scars":             "qc.change_compliance",
+	"document-versions": "qc.change_compliance",
 }
 
 var errSignatureReused = errors.New("that signature has already been used — re-enter your password to sign again")

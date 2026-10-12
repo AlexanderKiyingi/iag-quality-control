@@ -83,6 +83,14 @@ var signables = map[string]signable{
 		locks:   map[string]bool{"closed": true},
 		guard:   map[string]string{"closed": "t.status NOT IN ('closed', 'cancelled') AND t.effective IS TRUE"},
 	},
+	// A document version is approved (or sent back) by signature; approval
+	// locks its content. Making it effective is a separate step.
+	"document-versions": {
+		table: "qc_document_versions", key: "business_id",
+		meaning: map[string]string{"approved": "status = 'approved'", "rejected": "status = 'draft', submitted_at = NULL"},
+		locks:   map[string]bool{"approved": true},
+		guard:   map[string]string{"approved": "t.status = 'in_review'", "rejected": "t.status = 'in_review'"},
+	},
 	"specifications": {
 		table: "qc_specifications", key: "business_id",
 		meaning: map[string]string{"approved": ""},

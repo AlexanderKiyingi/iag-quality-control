@@ -312,6 +312,26 @@ Procurement owns the supplier master and decides each supplier's status. Quality
 - **Shelf life:** the earliest day the one-sided 95 % confidence bound crosses the limit on the side the trend heads. Extrapolation goes to at most twice the data's span, and at least 3 results are needed.
 - **Reminders:** an hourly job sends one `qc.alert` per pull, three days before it's due (or when it's found overdue). `next_pull_date` mirrors the earliest pending pull.
 
+### Controlled documents (025)
+
+SOPs, methods, forms, spec sheets, policies and work instructions under version control. The files themselves live in iag-dms's attachment store; QC holds the control record.
+
+| Method | Path | Permission | |
+|---|---|---|---|
+| GET | `/api/v1/documents?type=&filter=` | `qc.view_compliance` | `filter`: `effective`, `in_review`, `review_due`, `obsolete` |
+| POST | `/api/v1/documents` | `qc.change_compliance` | `{business_id (the document number), title, doc_type, owner, reviewers, review_period_months, change_summary, attachment_id, filename}` creates the document and draft v1 |
+| GET / PATCH | `/api/v1/documents/:id` | view / change | the header. A PATCH needs `change_reason` |
+| POST | `/api/v1/documents/:id/versions` | `qc.change_compliance` | opens the next draft (`change_summary` required). Only one revision is in flight at a time |
+| PATCH | `/api/v1/documents/:id/versions/:v` | `qc.change_compliance` | edits a draft only (file, summary) |
+| POST | `/api/v1/documents/:id/versions/:v/submit` | `qc.change_compliance` | draft → in review. The file is required |
+| POST | `/api/v1/signatures` `{entity: "document-versions", business_id: "<doc>-v<n>", meaning: "approved"/"rejected"}` | `qc.change_compliance` | approves (and locks) the version, or sends it back to draft |
+| POST | `/api/v1/documents/:id/versions/:v/effective` | `qc.change_compliance` | `{effective_date}`: an approved version goes into force. The previous one is superseded in the same transaction, and the next review date is set from the review period. Publishes `qc.document.effective` |
+| POST | `/api/v1/documents/:id/obsolete` | `qc.change_compliance` | `{reason}` withdraws the document |
+| POST | `/api/v1/documents/:id/versions/:v/acknowledge` | `qc.view_compliance` | "read and understood" by the signed-in person, on the effective version only. Publishes `qc.document.acknowledged` |
+| GET | `/api/v1/document-acknowledgements?document=&email=` | `qc.view_compliance` | for training records (HR) |
+
+- **Lab methods** take `sop_ref`. A measurement recorded with a method whose SOP has no effective version within its review date is refused with 409 `sop_not_effective`.
+
 ### Deleting
 
 `DELETE` exists on exactly five paths, and only while the row is still planning

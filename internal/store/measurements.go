@@ -154,6 +154,10 @@ func (s *Store) CreateLabMeasurement(ctx context.Context, in CreateLabMeasuremen
 	if err != nil {
 		return LabMeasurement{}, err
 	}
+	// 025: a method run by an SOP needs that SOP in force.
+	if err := s.checkMethodSOP(ctx, in.MethodID); err != nil {
+		return LabMeasurement{}, err
+	}
 	id := strings.TrimSpace(in.BusinessID)
 	if id == "" {
 		if id, err = nextBusinessID(ctx, s.pool, "qc_lab_measurements", "MSR"); err != nil {

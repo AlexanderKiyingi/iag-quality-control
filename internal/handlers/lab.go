@@ -33,6 +33,7 @@ func (h *QC) UpsertLabMethod(c *gin.Context) {
 		AcceptanceCriteria *string        `json:"acceptance_criteria"`
 		Status             *string        `json:"status"`
 		Attrs              map[string]any `json:"attrs"`
+		SopRef             *string        `json:"sop_ref"`
 	}
 	if err := bindJSONCoerced(c, &body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -48,6 +49,7 @@ func (h *QC) UpsertLabMethod(c *gin.Context) {
 		AcceptanceCriteria: body.AcceptanceCriteria,
 		Status:             body.Status,
 		Attrs:              body.Attrs,
+		SopRef:             body.SopRef,
 	})
 	if respondStoreErr(c, err) {
 		return
