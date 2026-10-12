@@ -20,6 +20,10 @@ func RequestAudit(store *auditlog.Store) gin.HandlerFunc {
 		if path == "/health" || path == "/healthz" || path == "/ready" {
 			return
 		}
+		// A public path carries a link token: log the route, not the token.
+		if strings.HasPrefix(path, "/public/") {
+			path = c.FullPath()
+		}
 		_ = store.LogAPIRequest(
 			c.Request.Context(),
 			c.Request.Method,

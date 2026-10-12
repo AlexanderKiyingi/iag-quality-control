@@ -43,6 +43,7 @@ var changeLogEntities = map[string]string{
 	"document-versions":    "qc_document_versions",
 	"coa-templates":        "qc_coa_templates",
 	"alert-routes":         "qc_alert_routes",
+	"buyer-links":          "qc_buyer_links",
 	"measurements":         "qc_lab_measurements",
 	"incoming-inspections": "qc_incoming_inspections",
 	"in-process-checks":    "qc_in_process_checks",

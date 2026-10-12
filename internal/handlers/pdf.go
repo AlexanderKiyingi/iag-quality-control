@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -8,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"iag-quality-control/backend/internal/pdf"
+	"iag-quality-control/backend/internal/store"
 )
 
 func writePDFResponse(c *gin.Context, filename string, data []byte, err error) {
@@ -29,6 +32,18 @@ func (h *QC) CoAPDF(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not load coa"})
 		return
 	}
+	payload, err := h.coaPayload(c.Request.Context(), coa)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	raw, err := pdf.RenderCoA(payload)
+	writePDFResponse(c, safeFilename(coa.CoaNumber)+".pdf", raw, err)
+}
+
+// coaPayload gathers what a certificate prints: its header, the batch's
+// summary, its signatures and, when one applies, its template's layout.
+func (h *QC) coaPayload(ctx context.Context, coa store.CoA) (pdf.CoAData, error) {
 	payload := pdf.CoAData{
 		CoaNumber:       coa.CoaNumber,
 		LotBusinessID:   coa.LotBusinessID,
@@ -39,28 +54,25 @@ func (h *QC) CoAPDF(c *gin.Context) {
 		Status:          coa.Status,
 	}
 	if coa.BatchBusinessID != "" {
-		if summary, err := h.Store.GetBatchLabSummary(c.Request.Context(), coa.BatchBusinessID); err == nil {
+		if summary, err := h.Store.GetBatchLabSummary(ctx, coa.BatchBusinessID); err == nil {
 			payload.Moisture = summary.Moisture
 			payload.CupScore = summary.CupScore
 			payload.Grade = summary.Grade
 		}
 	}
-	payload.Signatures = h.coaSignatureLines(c.Request.Context(), coa.CoaNumber)
-	tpl, ok, err := h.Store.ResolveCoATemplate(c.Request.Context(), coa.TemplateRef, coa.CustomerRef)
+	payload.Signatures = h.coaSignatureLines(ctx, coa.CoaNumber)
+	tpl, ok, err := h.Store.ResolveCoATemplate(ctx, coa.TemplateRef, coa.CustomerRef)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not load the certificate template"})
-		return
+		return payload, errors.New("could not load the certificate template")
 	}
 	if ok {
-		layout, err := h.coaLayout(c.Request.Context(), tpl, coa.BatchBusinessID, coa.CustomerRef, payload.Grade)
+		layout, err := h.coaLayout(ctx, tpl, coa.BatchBusinessID, coa.CustomerRef, payload.Grade)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not gather the batch's results"})
-			return
+			return payload, errors.New("could not gather the batch's results")
 		}
 		payload.Template = layout
 	}
-	raw, err := pdf.RenderCoA(payload)
-	writePDFResponse(c, safeFilename(coa.CoaNumber)+".pdf", raw, err)
+	return payload, nil
 }
 
 func (h *QC) CuppingPDF(c *gin.Context) {

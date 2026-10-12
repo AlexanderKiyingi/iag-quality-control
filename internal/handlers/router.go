@@ -80,6 +80,14 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 	}
 	admin := &Admin{Cfg: deps.Cfg, Audit: deps.Audit}
 
+	// 027: buyer links. No bearer — the token is the credential, checked
+	// against the database on every request.
+	public := r.Group("/public")
+	{
+		public.GET("/coa/:token", qc.PublicCoA)
+		public.GET("/coa/:token/pdf", qc.PublicCoAPDF)
+	}
+
 	v1 := r.Group("/api/v1")
 	if deps.PlatformAuth != nil {
 		v1.Use(deps.PlatformAuth.RequireAuth())
@@ -211,6 +219,10 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 		v1.GET("/coa/:coaNumber/pdf", middleware.RequirePermission("qc.export_pdf"), qc.CoAPDF)
 		v1.GET("/coa/:coaNumber", middleware.RequirePermission("qc.view_coa"), qc.GetCoAByNumber)
 		v1.POST("/coa", middleware.RequirePermission("qc.issue_coa"), qc.PostCoA)
+		v1.GET("/coa/:coaNumber/buyer-links", middleware.RequirePermission("qc.view_coa"), qc.ListBuyerLinks)
+		v1.POST("/coa/:coaNumber/buyer-links", middleware.RequirePermission("qc.issue_coa"), qc.CreateBuyerLink)
+		v1.GET("/buyer-links/:id/views", middleware.RequirePermission("qc.view_coa"), qc.ListBuyerLinkViews)
+		v1.POST("/buyer-links/:id/revoke", middleware.RequirePermission("qc.issue_coa"), qc.RevokeBuyerLink)
 
 		// Lab methods and requests (010). Reuse the instrument permissions: the
 		// people who keep the instrument register keep the method register.
