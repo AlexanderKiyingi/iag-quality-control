@@ -348,6 +348,24 @@ SOPs, methods, forms, spec sheets, policies and work instructions under version 
 - **Alerts:** `qc.alert.raised` carries the alert's `kind` and its route's audience. The seeded routes keep the old audience (`approvals.quality`).
 - **Validation pack:** see `validation/README.md`. It covers the requirements, the traceability generator and the IQ checklist.
 
+### Qualification to run a method (Phase 5)
+
+HR owns training (iag-erp courses and enrolments). A course names the lab methods it qualifies for (`qualifies_for`, iag-erp 026). Quality decides what counts. A person is qualified for a method when:
+
+- HR shows a completed, unexpired course for that method, and
+- when the method names a controlled SOP, they've read the version in force (025).
+
+| Method | Path | Permission | |
+|---|---|---|---|
+| GET | `/api/v1/qualification-matrix` | `qc.view_technicians` | people × methods: `qualified`, `expiring` (within 30 days), `expired`, `sop_unread`, `not_trained` |
+| GET | `/api/v1/qualification-check?method=&email=` | `qc.record_tests` | the answer for one person (the caller by default) |
+
+- **Enforcement:** recording a measurement with a `method_id` checks the recorder (the verified token's email). `QUALIFICATION_ENFORCEMENT` decides the outcome:
+  - `block`: 403 `not_qualified`, with reasons.
+  - `warn` (default): the result is recorded, the reasons go in `attrs.qualification_warning`, and `qualification` appears on the response.
+  - `off`: no check.
+- **Configuration:** `UPSTREAM_ERP` points at iag-erp, called with the service token (`/training/qualifications` accepts it). Unset or unreachable, training is reported unchecked rather than failed.
+
 ### Deleting
 
 `DELETE` exists on exactly five paths, and only while the row is still planning

@@ -24,6 +24,7 @@ type QC struct {
 	Outbox *outbox.Store
 	SCM    *clients.SCM
 	MES    *clients.MES
+	ERP    *clients.ERP
 	// SignatureVerifier checks signature tokens (esign). The platform auth
 	// middleware satisfies it; nil when no verifier is configured, in which
 	// case every signature is refused.

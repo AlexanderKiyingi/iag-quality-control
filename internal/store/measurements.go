@@ -39,6 +39,9 @@ type LabMeasurement struct {
 	// What a failing reading set in motion; only on the write response.
 	AutoActions *AutoActions `json:"auto_actions,omitempty"`
 	SPCAlerts   []SPCAlert   `json:"spc_alerts,omitempty"`
+	// Qualification is the recorder's standing for the method, when it is
+	// worth saying (not qualified, or HR unreachable); write response only.
+	Qualification any `json:"qualification,omitempty"`
 }
 
 // CreateLabMeasurementInput is the write shape. A measurement is an event, so

@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -54,6 +55,20 @@ func (h *QC) PostLabMeasurement(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	// Phase 5: is the person recording this qualified for the method?
+	qual := h.checkQualification(c.Request.Context(), actorOf(c), body.MethodID)
+	if qual.Checked && !qual.Qualified {
+		if h.enforcement() == "block" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "not qualified for this method: " + strings.Join(qual.Reasons, "; "),
+				"code": "not_qualified", "reasons": qual.Reasons})
+			return
+		}
+		// warn: recorded, with the reasons kept on the result itself.
+		if body.Attrs == nil {
+			body.Attrs = map[string]any{}
+		}
+		body.Attrs["qualification_warning"] = qual.Reasons
+	}
 	item, err := h.Store.CreateLabMeasurement(c.Request.Context(), store.CreateLabMeasurementInput{
 		BusinessID:       body.BusinessID,
 		SampleBusinessID: c.Param("id"),
@@ -88,6 +103,9 @@ func (h *QC) PostLabMeasurement(c *gin.Context) {
 	h.announceAutoActions(c.Request.Context(), item.AutoActions, item.BusinessID)
 	if item.ValueNum != nil {
 		item.SPCAlerts = h.checkSPC(c.Request.Context(), item.BusinessID, actorOf(c), item.Parameter)
+	}
+	if qual.Checked && (!qual.Qualified || qual.Note != "") {
+		item.Qualification = qual
 	}
 	c.JSON(http.StatusOK, item)
 }
