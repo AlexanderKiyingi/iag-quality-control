@@ -51,3 +51,38 @@ func TestComputePanelStatsTwoCuppersWhoDisagreeAreBothFlagged(t *testing.T) {
 		t.Fatalf("no majority, so both: %+v", stats.Evaluators)
 	}
 }
+
+func TestCalibrationMeasuresAgainstTheReferenceNotTheMedian(t *testing.T) {
+	// The head judge scores 84; two cuppers drift high together. Against the
+	// median they agree with each other; against the reference both are off.
+	panel := []PanelScore{sheet("Head", 8.4), sheet("A", 8.8), sheet("B", 8.85)}
+	median := ComputePanelStats(panel, 2)
+	if median.OutlierCount != 1 || median.Evaluators[0].Evaluator != "Head" {
+		t.Fatalf("by median, the head judge is the odd one out: %+v", median.Evaluators)
+	}
+	cal := ComputeCalibration(panel, "Head", 2)
+	if cal.Reference != "Head" || cal.OutlierCount != 2 {
+		t.Fatalf("by reference, A and B are off target: %+v", cal.Evaluators)
+	}
+	for _, ev := range cal.Evaluators {
+		if ev.Evaluator == "Head" && (ev.Deviation != 0 || ev.Outlier) {
+			t.Fatalf("the reference is the target: %+v", ev)
+		}
+	}
+}
+
+func TestCVAPanelUsesTheSheetsOwnScore(t *testing.T) {
+	score := func(v float64) *float64 { return &v }
+	panel := []PanelScore{
+		{Evaluator: "A", Scores: map[string]float64{"mouthfeel": 7}, TotalScore: score(86.5)},
+		{Evaluator: "B", Scores: map[string]float64{"mouthfeel": 7}, TotalScore: score(86)},
+		{Evaluator: "C", Scores: map[string]float64{"mouthfeel": 5}, TotalScore: score(79)},
+	}
+	stats := ComputePanelStats(panel, 2)
+	if stats.Total.Max != 86.5 || stats.OutlierCount != 1 || stats.Evaluators[0].Evaluator != "C" {
+		t.Fatalf("CVA totals: %+v", stats)
+	}
+	if _, ok := stats.Attributes["mouthfeel"]; !ok {
+		t.Fatalf("a CVA panel spreads over the CVA sections: %+v", stats.Attributes)
+	}
+}

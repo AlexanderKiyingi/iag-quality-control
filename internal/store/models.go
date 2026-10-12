@@ -1,6 +1,10 @@
 package store
 
-import "time"
+import (
+	"time"
+
+	"iag-quality-control/backend/internal/domain"
+)
 
 type Sample struct {
 	BusinessID      string   `json:"business_id"`
@@ -183,6 +187,18 @@ type CuppingScoreInput struct {
 	DefectCat1 int     `json:"defect_cat1"`
 	DefectCat2 int     `json:"defect_cat2"`
 	Notes      string  `json:"notes"`
+	// Migration 020. Form is "sca_2004" (the ten attributes above) or
+	// "sca_cva" (the Coffee Value Assessment: Hedonic 1–9 for eight sections,
+	// Intensity 0–15, flagged cups). Descriptors are the cupper's
+	// check-all-that-apply flavour notes. ClientRef is the id a tablet gave a
+	// sheet scored offline, so syncing it twice records it once.
+	Form           string         `json:"form,omitempty"`
+	Hedonic        map[string]int `json:"hedonic,omitempty"`
+	Intensity      map[string]int `json:"intensity,omitempty"`
+	Descriptors    []string       `json:"descriptors,omitempty"`
+	NonUniformCups int            `json:"non_uniform_cups"`
+	DefectiveCups  int            `json:"defective_cups"`
+	ClientRef      string         `json:"client_ref,omitempty"`
 }
 
 // CuppingScore is a stored sheet.
@@ -194,6 +210,17 @@ type CuppingScore struct {
 }
 
 func (in CuppingScoreInput) scoreMap() map[string]float64 {
+	if in.Form == domain.FormSCACVA {
+		out := make(map[string]float64, len(in.Hedonic))
+		for k, v := range in.Hedonic {
+			out[k] = float64(v)
+		}
+		return out
+	}
+	return in.scoreMap2004()
+}
+
+func (in CuppingScoreInput) scoreMap2004() map[string]float64 {
 	return map[string]float64{
 		"fragrance": in.Fragrance, "flavor": in.Flavor, "aftertaste": in.Aftertaste,
 		"acidity": in.Acidity, "body": in.Body, "balance": in.Balance,

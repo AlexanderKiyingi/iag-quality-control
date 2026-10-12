@@ -112,6 +112,13 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 		v1.GET("/cupping-sessions/:id/scores", middleware.RequirePermission("qc.view_lab_summary"), qc.GetCuppingPanel)
 		v1.POST("/cupping-sessions/:id/scores", middleware.RequirePermission("qc.record_tests"), qc.SaveCuppingScore)
 		v1.GET("/cupping-scores", middleware.RequirePermission("qc.view_lab_summary"), qc.ListCuppingScores)
+		// 020: cupping tables — blind sittings, CVA or 2004, scored by cup code.
+		v1.GET("/cupping-tables", middleware.RequirePermission("qc.view_lab_summary"), qc.ListCuppingTables)
+		v1.POST("/cupping-tables", middleware.RequirePermission("qc.record_tests"), qc.CreateCuppingTable)
+		v1.GET("/cupping-tables/:id", middleware.RequirePermission("qc.view_lab_summary"), qc.GetCuppingTable)
+		v1.POST("/cupping-tables/:id/close", middleware.RequirePermission(revealPermission), qc.CloseCuppingTable)
+		v1.GET("/cupping-tables/:id/results", middleware.RequirePermission("qc.view_lab_summary"), qc.CuppingTableResults)
+		v1.POST("/cupping-tables/:id/cups/:code/scores", middleware.RequirePermission("qc.record_tests"), qc.SaveTableCupScore)
 
 		v1.GET("/queues/instrument", middleware.RequirePermission("qc.view_queues"), qc.InstrumentQueue)
 		v1.GET("/queues/hplc", middleware.RequirePermission("qc.view_queues"), qc.HPLCQueue)

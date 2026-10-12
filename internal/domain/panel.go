@@ -22,11 +22,68 @@ type PanelScore struct {
 	Scores     map[string]float64
 	DefectCat1 int
 	DefectCat2 int
+	// TotalScore, when set, is the sheet's score as its own form computes it
+	// (a CVA sheet). Unset, the 2004 sum less defects is used.
+	TotalScore *float64
 }
 
 // Total is the evaluator's SCA total: attribute sum less defect penalties.
 func (p PanelScore) Total() float64 {
+	if p.TotalScore != nil {
+		return *p.TotalScore
+	}
 	return CalcSCATotal(p.Scores, p.DefectCat1, p.DefectCat2)
+}
+
+// attributesOf lists the attributes a panel was scored on: the 2004 sheet's
+// ten, or whatever the sheets carry (a CVA panel's eight hedonic sections).
+func attributesOf(panel []PanelScore) []string {
+	if len(panel) == 0 || len(panel[0].Scores) == 0 {
+		return CuppingAttributes
+	}
+	if _, ok := panel[0].Scores["cleancup"]; ok {
+		return CuppingAttributes
+	}
+	if _, ok := panel[0].Scores["mouthfeel"]; ok {
+		return CVAAffectiveSections
+	}
+	return CuppingAttributes
+}
+
+/*
+ComputeCalibration measures a calibration panel against its reference cupper
+(the head judge) rather than against the panel median: a calibration session
+exists to bring cuppers to the reference, so the reference's total is the
+target. The reference is reported with deviation 0. Without the reference's
+sheet the panel falls back to ComputePanelStats.
+*/
+func ComputeCalibration(panel []PanelScore, reference string, threshold float64) PanelStats {
+	stats := ComputePanelStats(panel, threshold)
+	var ref *float64
+	for _, p := range panel {
+		if p.Evaluator == reference {
+			t := p.Total()
+			ref = &t
+		}
+	}
+	if ref == nil {
+		return stats
+	}
+	stats.OutlierCount = 0
+	stats.Reference = reference
+	for i, ev := range stats.Evaluators {
+		dev := round2(ev.Total - *ref)
+		outlier := ev.Evaluator != reference && math.Abs(dev) > stats.OutlierThreshold
+		if outlier {
+			stats.OutlierCount++
+		}
+		stats.Evaluators[i].Deviation = dev
+		stats.Evaluators[i].Outlier = outlier
+	}
+	sort.SliceStable(stats.Evaluators, func(a, b int) bool {
+		return math.Abs(stats.Evaluators[a].Deviation) > math.Abs(stats.Evaluators[b].Deviation)
+	})
+	return stats
 }
 
 // Spread summarises one quantity across the panel.
@@ -53,6 +110,9 @@ type PanelStats struct {
 	Total            Spread               `json:"total"`
 	Evaluators       []EvaluatorDeviation `json:"evaluators"`
 	OutlierCount     int                  `json:"outlier_count"`
+	// Reference names the cupper a calibration panel was measured against;
+	// empty when deviations are from the panel median.
+	Reference string `json:"reference,omitempty"`
 }
 
 /*
@@ -85,7 +145,7 @@ func ComputePanelStats(panel []PanelScore, threshold float64) PanelStats {
 	if len(panel) == 0 {
 		return stats
 	}
-	for _, attr := range CuppingAttributes {
+	for _, attr := range attributesOf(panel) {
 		vals := make([]float64, len(panel))
 		for i, p := range panel {
 			vals[i] = p.Scores[attr]

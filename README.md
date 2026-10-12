@@ -203,6 +203,27 @@ inspections, in-process checks, NCs, CAPAs, release decisions) carries
 stores it beside the before→after diff, and `GET /change-log` takes
 `from` / `to` (YYYY-MM-DD) for reviewing a period.
 
+### Cupping tables, blind codes and the SCA CVA (020)
+
+A cupping table is one sitting: several samples, one panel, usually blind.
+
+| Method | Path | Permission | |
+|---|---|---|---|
+| GET | `/api/v1/cupping-tables?status=` | `qc.view_lab_summary` | list with cup and sheet counts |
+| POST | `/api/v1/cupping-tables` | `qc.record_tests` | `{title, form, blind, calibration, reference_evaluator, cups_per_sample, sample_business_ids[]}` |
+| GET | `/api/v1/cupping-tables/:id[?reveal=true]` | `qc.view_lab_summary` (+ `qc.change_sample` to reveal) | |
+| POST | `/api/v1/cupping-tables/:id/cups/:code/scores` | `qc.record_tests` | one cupper's sheet, by cup code |
+| POST | `/api/v1/cupping-tables/:id/close` | `qc.change_sample` | freezes sheets, reveals codes |
+| GET | `/api/v1/cupping-tables/:id/results` | `qc.view_lab_summary` | per-cup panel; 403 `table_blind` while hidden |
+
+- Each sample gets a session behind a random three-digit code. On an open blind table, nobody without `qc.change_sample` sees the sample, the batch or a running mean.
+- `form` is `sca_cva` (default for new tables) or `sca_2004`. A CVA sheet sends `hedonic` (1–9 for fragrance, aroma, flavor, aftertaste, acidity, sweetness, mouthfeel, overall), optional `intensity` (0–15), `descriptors`, `non_uniform_cups` and `defective_cups`. The score is 0.65625 × Σhedonic + 52.75 − 2 × non-uniform − 4 × defective, and is stored in `total_score` so the mean, SPC and the CoA read one number.
+- `client_ref` is the tablet's id for an offline sheet. A re-send of the same sheet is a 200 no-op; the same ref on a different sheet is a 409.
+- A closed table refuses sheets (409 `table_closed`).
+- On a calibration table, each cupper is measured against `reference_evaluator`, not the panel median.
+
+The blind is procedural, not cryptographic. Anyone who can list cupping sessions can still match a session id to its sample, so a cupper's screen should use only the table routes.
+
 ### Deleting
 
 `DELETE` exists on exactly five paths, and only while the row is still planning
