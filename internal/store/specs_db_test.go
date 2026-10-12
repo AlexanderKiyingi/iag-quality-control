@@ -174,7 +174,7 @@ func TestSpecificationsAgainstRealPostgres(t *testing.T) {
 
 	lot := id("LOT")
 	t.Run("a wet lot on receipt is quarantined, once", func(t *testing.T) {
-		insp, err := s.UpsertIncomingInspection(ctx, UpsertIncomingInspectionInput{
+		insp, err := s.UpsertIncomingInspection(ctx, UpsertIncomingInspectionInput{ChangeReason: "test edit",
 			BusinessID: id("IIN"), SourceLot: lot, MoisturePct: num(13.4), Inspector: str("QA"),
 		})
 		if err != nil {
@@ -188,7 +188,7 @@ func TestSpecificationsAgainstRealPostgres(t *testing.T) {
 		}
 		// A notes-only edit keeps the verdict (the stored moisture is re-judged)
 		// and raises nothing new.
-		again, err := s.UpsertIncomingInspection(ctx, UpsertIncomingInspectionInput{
+		again, err := s.UpsertIncomingInspection(ctx, UpsertIncomingInspectionInput{ChangeReason: "test edit",
 			BusinessID: id("IIN"), SourceLot: lot, Notes: str("bags resealed"),
 		})
 		if err != nil {
@@ -202,12 +202,12 @@ func TestSpecificationsAgainstRealPostgres(t *testing.T) {
 			t.Fatalf("want exactly one hold on the lot, got %d", n)
 		}
 		// Accepting it anyway needs a reason; corrected moisture passes.
-		if _, err := s.UpsertIncomingInspection(ctx, UpsertIncomingInspectionInput{
+		if _, err := s.UpsertIncomingInspection(ctx, UpsertIncomingInspectionInput{ChangeReason: "test edit",
 			BusinessID: id("IIN"), SourceLot: lot, Result: str("accept"),
 		}); !errors.Is(err, ErrNeedsOverride) {
 			t.Fatalf("want ErrNeedsOverride, got %v", err)
 		}
-		fixed, err := s.UpsertIncomingInspection(ctx, UpsertIncomingInspectionInput{
+		fixed, err := s.UpsertIncomingInspection(ctx, UpsertIncomingInspectionInput{ChangeReason: "test edit",
 			BusinessID: id("IIN"), SourceLot: lot, MoisturePct: num(11.9),
 		})
 		if err != nil || fixed.Verdict != "pass" || fixed.Result != "accept" {
@@ -224,7 +224,7 @@ func TestSpecificationsAgainstRealPostgres(t *testing.T) {
 			t.Fatal(err)
 		}
 		ipcBatch := id("BIP")
-		chk, err := s.UpsertInProcessCheck(ctx, UpsertInProcessCheckInput{
+		chk, err := s.UpsertInProcessCheck(ctx, UpsertInProcessCheckInput{ChangeReason: "test edit",
 			BusinessID: id("IPC"), Parameter: ipcParam, Stage: str("Roasting"), BatchRef: &ipcBatch, Actual: str("241"),
 		})
 		if err != nil {

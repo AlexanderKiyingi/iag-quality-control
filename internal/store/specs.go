@@ -64,6 +64,7 @@ type UpsertSpecificationInput struct {
 	Notes        *string
 	Attrs        map[string]any
 	Actor        string
+	ChangeReason string
 }
 
 /*
@@ -245,13 +246,13 @@ func (s *Store) UpsertSpecification(ctx context.Context, in UpsertSpecificationI
 	rows, err := s.pool.Query(ctx, `
 		INSERT INTO qc_specifications (
 			business_id, stage, parameter, grade, label, unit, lsl, usl, target,
-			action_on_fail, active, notes, attrs, updated_by, updated_at
+			action_on_fail, active, notes, attrs, updated_by, change_reason, updated_at
 		) VALUES (
 			$1, COALESCE($2::text, 'any'), $3, COALESCE($4::text, ''), COALESCE($5::text, ''),
 			COALESCE($6::text, ''), `+limitValue(7, "lsl")+`, `+limitValue(8, "usl")+`,
 			`+limitValue(9, "target")+`,
 			COALESCE($10::text, 'flag'), COALESCE($11::bool, true), COALESCE($12::text, ''),
-			COALESCE($13::jsonb, '{}'::jsonb), $14, NOW()
+			COALESCE($13::jsonb, '{}'::jsonb), $14, $15, NOW()
 		)
 		ON CONFLICT (business_id) DO UPDATE SET
 			stage = COALESCE($2::text, qc_specifications.stage),
@@ -268,11 +269,12 @@ func (s *Store) UpsertSpecification(ctx context.Context, in UpsertSpecificationI
 			attrs = CASE WHEN $13::jsonb IS NULL THEN qc_specifications.attrs
 			             ELSE qc_specifications.attrs || $13::jsonb END,
 			updated_by = EXCLUDED.updated_by,
+			change_reason = EXCLUDED.change_reason,
 			updated_at = NOW()
 		RETURNING `+specCols,
 		id, stage, parameter, trimOptional(in.Grade), trimOptional(in.Label), trimOptional(in.Unit),
 		lsl, usl, target, action, in.Active, in.Notes, attrsOptional(in.Attrs),
-		strings.TrimSpace(in.Actor),
+		strings.TrimSpace(in.Actor), strings.TrimSpace(in.ChangeReason),
 	)
 	if err != nil {
 		return Specification{}, specWriteErr(err)

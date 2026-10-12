@@ -45,6 +45,7 @@ func (h *QC) CoAPDF(c *gin.Context) {
 			payload.Grade = summary.Grade
 		}
 	}
+	payload.Signatures = h.coaSignatureLines(c.Request.Context(), coa.CoaNumber)
 	raw, err := pdf.RenderCoA(payload)
 	writePDFResponse(c, safeFilename(coa.CoaNumber)+".pdf", raw, err)
 }

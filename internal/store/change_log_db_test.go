@@ -35,18 +35,18 @@ func TestChangeLogAgainstRealPostgres(t *testing.T) {
 	num := func(v float64) *float64 { return &v }
 	id := fmt.Sprintf("IIN-LOG-%s", run)
 
-	if _, err := s.UpsertIncomingInspection(ctx, UpsertIncomingInspectionInput{
+	if _, err := s.UpsertIncomingInspection(ctx, UpsertIncomingInspectionInput{ChangeReason: "test edit",
 		BusinessID: id, SourceLot: "LOT-LOG-" + run, MoisturePct: num(11.0), Actor: "ana@iag",
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.UpsertIncomingInspection(ctx, UpsertIncomingInspectionInput{
+	if _, err := s.UpsertIncomingInspection(ctx, UpsertIncomingInspectionInput{ChangeReason: "test edit",
 		BusinessID: id, SourceLot: "LOT-LOG-" + run, MoisturePct: num(11.4), Actor: "ben@iag",
 	}); err != nil {
 		t.Fatal(err)
 	}
 	// A re-save that changes nothing logs nothing.
-	if _, err := s.UpsertIncomingInspection(ctx, UpsertIncomingInspectionInput{
+	if _, err := s.UpsertIncomingInspection(ctx, UpsertIncomingInspectionInput{ChangeReason: "test edit",
 		BusinessID: id, SourceLot: "LOT-LOG-" + run, Notes: str(""), Actor: "ben@iag",
 	}); err != nil {
 		t.Fatal(err)

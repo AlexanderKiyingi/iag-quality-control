@@ -148,13 +148,16 @@ type SamplePatch struct {
 	AssignedTech *string
 	Notes        *string
 	Attrs        map[string]any
+	// ChangeReason is why (019). A person's PATCH must give one; the lab
+	// workflows that move a sample's status give their own.
+	ChangeReason string
 }
 
 // UpdateSampleStatus moves a sample's status. The tests and cupping flows
 // call it; PATCH /samples/:id goes through UpdateSample so a client can edit
 // the other columns without pretending they are part of the notes.
 func (s *Store) UpdateSampleStatus(ctx context.Context, businessID, status string) (Sample, error) {
-	return s.UpdateSample(ctx, businessID, SamplePatch{Status: &status})
+	return s.UpdateSample(ctx, businessID, SamplePatch{Status: &status, ChangeReason: "status set by the lab workflow"})
 }
 
 // UpdateSample applies a SamplePatch. At least one field must be set. Moving to
@@ -190,12 +193,13 @@ func (s *Store) UpdateSample(ctx context.Context, businessID string, p SamplePat
 		    assigned_tech = COALESCE($6, assigned_tech),
 		    notes         = COALESCE($7, notes),
 		    attrs         = CASE WHEN $8::jsonb IS NULL THEN qc_samples.attrs
-		                        ELSE qc_samples.attrs || $8::jsonb END
+		                        ELSE qc_samples.attrs || $8::jsonb END,
+		    change_reason = $9
 		WHERE business_id = $1
 		RETURNING business_id, batch_business_id, sample_type, status, priority,
 		          assigned_tech, tests_required, notes, attrs, received_at, completed_at, created_at`,
 		businessID, status, completedAt, p.SampleType, p.Priority, p.AssignedTech, p.Notes,
-		attrsOptional(p.Attrs),
+		attrsOptional(p.Attrs), strings.TrimSpace(p.ChangeReason),
 	).Scan(
 		&out.BusinessID, &out.BatchBusinessID, &out.SampleType, &out.Status, &out.Priority,
 		&out.AssignedTech, &testsJSON, &out.Notes, &attrs, &out.ReceivedAt, &out.CompletedAt, &out.CreatedAt,

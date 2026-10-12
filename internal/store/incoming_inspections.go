@@ -55,6 +55,7 @@ type UpsertIncomingInspectionInput struct {
 	// OverrideReason follows optional.go; Actor is who is saving.
 	OverrideReason *string
 	Actor          string
+	ChangeReason   string
 }
 
 const incomingInspectionCols = `business_id, inspected_at::text, source_lot, item_ref, sample_size,
@@ -125,6 +126,8 @@ func (s *Store) UpsertIncomingInspection(ctx context.Context, in UpsertIncomingI
 		}
 	} else if prev, exists, err = s.getIncomingInspection(ctx, id); err != nil {
 		return IncomingInspection{}, err
+	} else if exists && strings.TrimSpace(in.ChangeReason) == "" {
+		return IncomingInspection{}, ErrReasonRequired
 	}
 
 	moisture := prev.MoisturePct
@@ -171,13 +174,13 @@ func (s *Store) UpsertIncomingInspection(ctx context.Context, in UpsertIncomingI
 		INSERT INTO qc_incoming_inspections (
 			business_id, inspected_at, source_lot, item_ref, sample_size, moisture_pct,
 			defect_count, inspector, result, status, notes, attachments, attrs,
-			verdict, evaluation, override_reason, updated_by, updated_at
+			verdict, evaluation, override_reason, updated_by, change_reason, updated_at
 		) VALUES (
 			$1, COALESCE(NULLIF($2::text, '')::date, CURRENT_DATE), $3, COALESCE($4::text, ''),
 			COALESCE($5::int, 0), $6, COALESCE($7::int, 0), COALESCE($8::text, ''),
 			COALESCE($9::text, ''), COALESCE($10::text, 'open'), COALESCE($11::text, ''),
 			COALESCE($12::text, ''), COALESCE($13::jsonb, '{}'::jsonb),
-			$14, $15::jsonb, COALESCE($16::text, ''), $17, NOW()
+			$14, $15::jsonb, COALESCE($16::text, ''), $17, $18, NOW()
 		)
 		ON CONFLICT (business_id) DO UPDATE SET
 			inspected_at = CASE WHEN $2::text IS NULL THEN qc_incoming_inspections.inspected_at
@@ -199,12 +202,14 @@ func (s *Store) UpsertIncomingInspection(ctx context.Context, in UpsertIncomingI
 			evaluation = EXCLUDED.evaluation,
 			override_reason = COALESCE($16::text, qc_incoming_inspections.override_reason),
 			updated_by = EXCLUDED.updated_by,
+			change_reason = EXCLUDED.change_reason,
 			updated_at = NOW()
 		RETURNING `+incomingInspectionCols,
 		id, in.InspectedAt, sourceLot, trimOptional(in.ItemRef), in.SampleSize, in.MoisturePct,
 		in.DefectCount, trimOptional(in.Inspector), result,
 		status, in.Notes, in.Attachments, attrsOptional(in.Attrs),
 		ev.Verdict, ev.EntriesJSON(), trimOptional(in.OverrideReason), strings.TrimSpace(in.Actor),
+		strings.TrimSpace(in.ChangeReason),
 	)
 	if err != nil {
 		return IncomingInspection{}, err

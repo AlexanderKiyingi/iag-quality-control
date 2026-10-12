@@ -11,6 +11,7 @@ import (
 
 	"iag-quality-control/backend/internal/clients"
 	"iag-quality-control/backend/internal/config"
+	"iag-quality-control/backend/internal/esign"
 	"iag-quality-control/backend/internal/events"
 	"iag-quality-control/backend/internal/outbox"
 	"iag-quality-control/backend/internal/store"
@@ -23,6 +24,10 @@ type QC struct {
 	Outbox *outbox.Store
 	SCM    *clients.SCM
 	MES    *clients.MES
+	// SignatureVerifier checks signature tokens (esign). The platform auth
+	// middleware satisfies it; nil when no verifier is configured, in which
+	// case every signature is refused.
+	SignatureVerifier esign.Verifier
 }
 
 // publish emits a domain event. When Kafka is enabled it durably enqueues to
@@ -99,6 +104,15 @@ func respondStoreErr(c *gin.Context, err error) bool {
 	case errors.Is(err, store.ErrConflict):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		return true
+	case errors.Is(err, store.ErrLocked):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "record_locked"})
+		return true
+	case errors.Is(err, store.ErrReasonRequired):
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error(), "code": "reason_required"})
+		return true
+	case errors.Is(err, store.ErrSignatureState):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "signature_state"})
+		return true
 	case errors.Is(err, store.ErrNeedsOverride):
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error(), "code": "override_required"})
 		return true
@@ -136,3 +150,13 @@ func labResultPayload(summary store.BatchLabSummary) map[string]any {
 	return data
 }
 
+// statusIs reports whether an optional status names the given state.
+func statusIs(status *string, want string) bool {
+	return status != nil && strings.EqualFold(strings.TrimSpace(*status), want)
+}
+
+// respondSignatureRequired refuses a write that would put a record into a
+// state only a signature may (closed, approved).
+func respondSignatureRequired(c *gin.Context, message string) {
+	c.JSON(http.StatusForbidden, gin.H{"error": message, "code": "signature_required"})
+}

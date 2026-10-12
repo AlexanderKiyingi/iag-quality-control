@@ -19,7 +19,10 @@ type ChangeLogEntry struct {
 	Op         string         `json:"op"`
 	Changes    map[string]any `json:"changes"`
 	Actor      string         `json:"actor"`
-	ChangedAt  time.Time      `json:"changed_at"`
+	// Reason is why the change was made (019); empty for system writes and
+	// for changes made before reasons were required.
+	Reason    string    `json:"reason"`
+	ChangedAt time.Time `json:"changed_at"`
 }
 
 // changeLogEntities maps the names a client uses — the API's own collection
@@ -71,6 +74,12 @@ func changeLogEntity(table string) string {
 // newest first. entity "" with a business id searches every table — business
 // ids carry their own prefix, so a collision is not a practical concern.
 func (s *Store) ListChangeLog(ctx context.Context, entity, businessID, actor string, limit int) ([]ChangeLogEntry, error) {
+	return s.ListChangeLogBetween(ctx, entity, businessID, actor, "", "", limit)
+}
+
+// ListChangeLogBetween is ListChangeLog over a date range (YYYY-MM-DD, either
+// end optional, inclusive), for an auditor reviewing a period.
+func (s *Store) ListChangeLogBetween(ctx context.Context, entity, businessID, actor, from, to string, limit int) ([]ChangeLogEntry, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 100
 	}
@@ -81,12 +90,15 @@ func (s *Store) ListChangeLog(ctx context.Context, entity, businessID, actor str
 		}
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, table_name, business_id, op, changes, actor, changed_at
+		SELECT id, table_name, business_id, op, changes, actor, reason, changed_at
 		FROM qc_change_log
 		WHERE ($1 = '' OR table_name = $1) AND ($2 = '' OR business_id = $2)
 		  AND ($3 = '' OR actor = $3)
+		  AND ($5 = '' OR changed_at >= $5::date)
+		  AND ($6 = '' OR changed_at < $6::date + 1)
 		ORDER BY changed_at DESC, id DESC
-		LIMIT $4`, table, strings.TrimSpace(businessID), strings.TrimSpace(actor), limit)
+		LIMIT $4`, table, strings.TrimSpace(businessID), strings.TrimSpace(actor), limit,
+		dateOrEmpty(from), dateOrEmpty(to))
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +108,7 @@ func (s *Store) ListChangeLog(ctx context.Context, entity, businessID, actor str
 		var item ChangeLogEntry
 		var changes []byte
 		if err := rows.Scan(&item.ID, &item.Table, &item.BusinessID, &item.Op, &changes,
-			&item.Actor, &item.ChangedAt); err != nil {
+			&item.Actor, &item.Reason, &item.ChangedAt); err != nil {
 			return nil, err
 		}
 		item.Entity = changeLogEntity(item.Table)
@@ -105,4 +117,14 @@ func (s *Store) ListChangeLog(ctx context.Context, entity, businessID, actor str
 		out = append(out, item)
 	}
 	return out, rows.Err()
+}
+
+// dateOrEmpty passes a YYYY-MM-DD through and turns anything else into "" —
+// a malformed date must not reach a ::date cast and 500 the whole query.
+func dateOrEmpty(v string) string {
+	v = strings.TrimSpace(v)
+	if _, err := time.Parse("2006-01-02", v); err != nil {
+		return ""
+	}
+	return v
 }

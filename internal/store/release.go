@@ -42,6 +42,7 @@ type UpsertReleaseDecisionInput struct {
 	Attachments  *string
 	Attrs        map[string]any
 	Actor        string
+	ChangeReason string
 }
 
 // NormalizeReleaseDecision maps the app's decision labels onto the stored
@@ -133,6 +134,9 @@ func (s *Store) UpsertReleaseDecision(ctx context.Context, in UpsertReleaseDecis
 			return ReleaseDecision{}, false, err
 		}
 	}
+	if err := s.guardWrite(ctx, "release-decisions", "qc_release_decisions", "business_id", id, in.ChangeReason); err != nil {
+		return ReleaseDecision{}, false, err
+	}
 	var decision *string
 	if in.Decision != nil {
 		normalised := NormalizeReleaseDecision(*in.Decision)
@@ -144,12 +148,12 @@ func (s *Store) UpsertReleaseDecision(ctx context.Context, in UpsertReleaseDecis
 		), up AS (
 			INSERT INTO qc_release_decisions (
 				business_id, decision_date, batch_ref, product, check_refs, decided_by,
-				decision, status, notes, attachments, attrs, updated_by, updated_at
+				decision, status, notes, attachments, attrs, updated_by, change_reason, updated_at
 			) VALUES (
 				$1, COALESCE(NULLIF($2::text, '')::date, CURRENT_DATE), $3, COALESCE($4::text, ''),
 				COALESCE($5::text, ''), COALESCE($6::text, ''), COALESCE($7::text, ''),
 				COALESCE($8::text, 'draft'), COALESCE($9::text, ''), COALESCE($10::text, ''),
-				COALESCE($11::jsonb, '{}'::jsonb), $12, NOW()
+				COALESCE($11::jsonb, '{}'::jsonb), $12, $13, NOW()
 			)
 			ON CONFLICT (business_id) DO UPDATE SET
 				decision_date = CASE WHEN $2::text IS NULL THEN qc_release_decisions.decision_date
@@ -166,13 +170,14 @@ func (s *Store) UpsertReleaseDecision(ctx context.Context, in UpsertReleaseDecis
 				attrs = CASE WHEN $11::jsonb IS NULL THEN qc_release_decisions.attrs
 				             ELSE qc_release_decisions.attrs || $11::jsonb END,
 				updated_by = EXCLUDED.updated_by,
+				change_reason = EXCLUDED.change_reason,
 				updated_at = NOW()
 			RETURNING `+releaseCols+`
 		)
 		SELECT up.*, COALESCE((SELECT decision FROM prev), '') AS prev_decision FROM up`,
 		id, in.DecisionDate, batchRef, trimOptional(in.Product), trimOptional(in.CheckRefs),
 		trimOptional(in.DecidedBy), decision, blankToNil(in.Status), in.Notes,
-		in.Attachments, attrsOptional(in.Attrs), strings.TrimSpace(in.Actor),
+		in.Attachments, attrsOptional(in.Attrs), strings.TrimSpace(in.Actor), strings.TrimSpace(in.ChangeReason),
 	)
 	if err != nil {
 		return ReleaseDecision{}, false, err

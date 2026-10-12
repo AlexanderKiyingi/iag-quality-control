@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"errors"
+	"log"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -87,9 +89,19 @@ func (h *QC) ApproveCertification(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	// Each certification stage — QC review, ops approval, CEO sign-off — is a
+	// signed act (019); the last one issues the CoA.
+	signer, err := h.signerFrom(c)
+	if respondSignatureErr(c, err) {
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not check the signature"})
+		return
+	}
 	req, coa, issued, err := h.Store.ApproveCertificationStage(c.Request.Context(), store.ApproveCertificationInput{
 		RequestBusinessID: c.Param("id"),
-		Approver:          middleware.ActorLabel(c),
+		Approver:          signer.Email,
 		Decision:          body.Decision,
 		Notes:             body.Notes,
 	})
@@ -99,6 +111,19 @@ func (h *QC) ApproveCertification(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "approval failed"})
 		return
+	}
+	meaning := "approved"
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(body.Decision)), "reject") {
+		meaning = "rejected"
+	}
+	reason := strings.TrimSpace(body.Notes)
+	if reason == "" {
+		reason = "Certification stage " + meaning
+	}
+	if _, err := h.Store.SignRecord(c.Request.Context(), store.SignInput{
+		Entity: "certification-requests", BusinessID: c.Param("id"), Meaning: meaning, Reason: reason, Signer: signer,
+	}); err != nil {
+		log.Printf("quality-control: certification %s %s but not signed: %v", c.Param("id"), meaning, err)
 	}
 	resp := gin.H{"request": req}
 	if issued {

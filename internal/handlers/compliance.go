@@ -75,9 +75,14 @@ func (h *QC) UpsertCAPA(c *gin.Context) {
 		Effectiveness *string        `json:"effectiveness"`
 		Attachments   *string        `json:"attachments"`
 		Attrs         map[string]any `json:"attrs"`
+		ChangeReason  string         `json:"change_reason"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if statusIs(body.Status, "closed") {
+		respondSignatureRequired(c, "Closing a CAPA is a signed act: use Sign → Close.")
 		return
 	}
 	item, err := h.Store.UpsertCAPA(c.Request.Context(), store.UpsertCAPAInput{
@@ -86,6 +91,7 @@ func (h *QC) UpsertCAPA(c *gin.Context) {
 		CorrectiveAction: body.CorrectiveAction, OpenedAt: body.OpenedAt, ClosedAt: body.ClosedAt,
 		DueDate: body.DueDate, CAPAKind: body.CAPAKind, Effectiveness: body.Effectiveness,
 		Attachments: body.Attachments, Attrs: body.Attrs, Actor: actorOf(c),
+		ChangeReason: body.ChangeReason,
 	})
 	if respondStoreErr(c, err) {
 		return
