@@ -296,6 +296,22 @@ Procurement owns the supplier master and decides each supplier's status. Quality
   - **insufficient_data:** fewer than 3 decided lots.
 - **`qc.supplier.scorecard`** is published to `iag.quality` when a supplier's recommendation changes, after an inspection or a SCAR change. Procurement consumes it and records the advice next to its own decision.
 
+### AQL sampling and stability (024)
+
+| Method | Path | Permission | |
+|---|---|---|---|
+| GET | `/api/v1/sampling-plan?lot_size=&level=II&aql=2.5` | `qc.view_samples` | the ISO 2859-1 plan: code letter, sample size, Ac/Re, any arrow followed. With no query, it lists the levels and AQLs |
+| POST / PUT | incoming inspections | as before | take `lot_size`, `inspection_level` (default II) and `aql`. The service sets `sample_size`, `accept_number` and `reject_number`, and judges `defect_count` against them as `aql_nonconforming` in the evaluation. Over Ac fails, and an NC is raised |
+| POST | `/api/v1/stability-studies/:id/schedule` | `qc.add_sample` | `{timepoints: [0, 30, 90, …]}` gives pull points due on start date + day. A dropped point is cancelled, not deleted |
+| GET | `/api/v1/stability-studies/:id/pull-points` | `qc.view_samples` | with results and `overdue` |
+| POST | `/api/v1/stability-studies/:id/pull-points/:day/results` | `qc.record_tests` | `{results: [{parameter, value, unit}], notes}` marks the pull tested |
+| GET | `/api/v1/stability-studies/:id/shelf-life?parameter=&grade=&lsl=&usl=` | `qc.view_samples` | least-squares fit and an ICH Q1E shelf life against the finished-goods spec, with the projection for a chart |
+| GET | `/api/v1/stability-pulls/due?within=14` | `qc.view_samples` | |
+
+- **AQL plans:** single sampling, normal inspection, Table 2-A, percent-nonconforming AQLs 0.010–10. Tightened/reduced inspection and switching aren't implemented. When the sample would cover the lot, every unit is inspected.
+- **Shelf life:** the earliest day the one-sided 95 % confidence bound crosses the limit on the side the trend heads. Extrapolation goes to at most twice the data's span, and at least 3 results are needed.
+- **Reminders:** an hourly job sends one `qc.alert` per pull, three days before it's due (or when it's found overdue). `next_pull_date` mirrors the earliest pending pull.
+
 ### Deleting
 
 `DELETE` exists on exactly five paths, and only while the row is still planning

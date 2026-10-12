@@ -2,8 +2,11 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
+
+	"iag-quality-control/backend/internal/domain"
 )
 
 // IncomingInspection is a supplier lot checked on arrival (migration 015).
@@ -38,6 +41,13 @@ type IncomingInspection struct {
 	SupplierRef string `json:"supplier_ref"`
 	PORef       string `json:"po_ref"`
 	ReceiptRef  string `json:"receipt_ref"`
+	// Migration 024: the AQL plan the lot was sampled and judged by.
+	LotSize         *int     `json:"lot_size,omitempty"`
+	InspectionLevel string   `json:"inspection_level"`
+	AQL             *float64 `json:"aql,omitempty"`
+	AcceptNumber    *int     `json:"accept_number,omitempty"`
+	RejectNumber    *int     `json:"reject_number,omitempty"`
+	SamplingNote    string   `json:"sampling_note"`
 }
 
 // UpsertIncomingInspectionInput is the write shape. SourceLot is required — an
@@ -64,12 +74,18 @@ type UpsertIncomingInspectionInput struct {
 	SupplierRef    *string
 	PORef          *string
 	ReceiptRef     *string
+	// AQL sampling (024): with a lot size and an AQL the service picks the
+	// plan, sets the sample size, and judges the defect count against it.
+	LotSize         *int
+	InspectionLevel *string
+	AQL             *float64
 }
 
 const incomingInspectionCols = `business_id, inspected_at::text, source_lot, item_ref, sample_size,
 	moisture_pct, defect_count, inspector, result, status, notes, attachments, attrs,
 	verdict, evaluation, override_reason, updated_by, created_at, updated_at,
-	supplier_ref, po_ref, receipt_ref`
+	supplier_ref, po_ref, receipt_ref,
+	lot_size, inspection_level, aql, accept_number, reject_number, sampling_note`
 
 func (s *Store) ListIncomingInspections(ctx context.Context, sourceLot, status string, limit int) ([]IncomingInspection, error) {
 	if limit <= 0 || limit > 500 {
@@ -160,6 +176,47 @@ func (s *Store) UpsertIncomingInspection(ctx context.Context, in UpsertIncomingI
 	if err != nil {
 		return IncomingInspection{}, err
 	}
+
+	// AQL: the plan follows from lot size, level and AQL (the last saved
+	// value of each where this save leaves it alone).
+	lotSize, aql, level := prev.LotSize, prev.AQL, prev.InspectionLevel
+	if in.LotSize != nil {
+		lotSize = in.LotSize
+	}
+	if in.AQL != nil {
+		aql = in.AQL
+	}
+	if in.InspectionLevel != nil {
+		level = strings.TrimSpace(*in.InspectionLevel)
+	}
+	var plan *domain.SamplingPlan
+	sampleSize := in.SampleSize
+	if lotSize != nil && aql != nil && *lotSize > 0 && *aql > 0 {
+		p, err := domain.NewSamplingPlan(*lotSize, level, *aql)
+		if err != nil {
+			return IncomingInspection{}, fmt.Errorf("%w: %s", ErrBadInput, err.Error())
+		}
+		plan = &p
+		level = p.Level
+		n := p.SampleSize
+		sampleSize = &n
+		if in.DefectCount != nil || exists {
+			ac, re := float64(p.Accept), float64(p.Reject)
+			d := float64(defects)
+			entry := EvaluationEntry{Parameter: "aql_nonconforming", Raw: fmt.Sprintf("%d of %d", defects, p.SampleSize),
+				Value: &d, USL: &ac, Verdict: p.Judge(defects), Action: domain.ActionFlag,
+				Unit: fmt.Sprintf("Ac %d / Re %g, AQL %g, letter %s", p.Accept, re, p.AQL, p.PlanLetter)}
+			ev.Entries = append(ev.Entries, entry)
+			if entry.Verdict == domain.VerdictFail {
+				ev.Verdict = domain.VerdictFail
+				if ev.Action == "" || ev.Action == domain.ActionNone {
+					ev.Action = domain.ActionFlag
+				}
+			} else if ev.Verdict == "" || ev.Verdict == domain.VerdictNoSpec {
+				ev.Verdict = domain.VerdictPass
+			}
+		}
+	}
 	override := prev.OverrideReason
 	if in.OverrideReason != nil {
 		override = *in.OverrideReason
@@ -184,14 +241,16 @@ func (s *Store) UpsertIncomingInspection(ctx context.Context, in UpsertIncomingI
 			business_id, inspected_at, source_lot, item_ref, sample_size, moisture_pct,
 			defect_count, inspector, result, status, notes, attachments, attrs,
 			verdict, evaluation, override_reason, updated_by, change_reason, updated_at,
-			supplier_ref, po_ref, receipt_ref
+			supplier_ref, po_ref, receipt_ref,
+			lot_size, inspection_level, aql, accept_number, reject_number, sampling_note
 		) VALUES (
 			$1, COALESCE(NULLIF($2::text, '')::date, CURRENT_DATE), $3, COALESCE($4::text, ''),
 			COALESCE($5::int, 0), $6, COALESCE($7::int, 0), COALESCE($8::text, ''),
 			COALESCE($9::text, ''), COALESCE($10::text, 'open'), COALESCE($11::text, ''),
 			COALESCE($12::text, ''), COALESCE($13::jsonb, '{}'::jsonb),
 			$14, $15::jsonb, COALESCE($16::text, ''), $17, $18, NOW(),
-			COALESCE($19::text, ''), COALESCE($20::text, ''), COALESCE($21::text, '')
+			COALESCE($19::text, ''), COALESCE($20::text, ''), COALESCE($21::text, ''),
+			$22, $23, $24, $25, $26, $27
 		)
 		ON CONFLICT (business_id) DO UPDATE SET
 			inspected_at = CASE WHEN $2::text IS NULL THEN qc_incoming_inspections.inspected_at
@@ -217,14 +276,18 @@ func (s *Store) UpsertIncomingInspection(ctx context.Context, in UpsertIncomingI
 			supplier_ref = COALESCE($19::text, qc_incoming_inspections.supplier_ref),
 			po_ref = COALESCE($20::text, qc_incoming_inspections.po_ref),
 			receipt_ref = COALESCE($21::text, qc_incoming_inspections.receipt_ref),
+			lot_size = EXCLUDED.lot_size, inspection_level = EXCLUDED.inspection_level, aql = EXCLUDED.aql,
+			accept_number = EXCLUDED.accept_number, reject_number = EXCLUDED.reject_number,
+			sampling_note = EXCLUDED.sampling_note,
 			updated_at = NOW()
 		RETURNING `+incomingInspectionCols,
-		id, in.InspectedAt, sourceLot, trimOptional(in.ItemRef), in.SampleSize, in.MoisturePct,
+		id, in.InspectedAt, sourceLot, trimOptional(in.ItemRef), sampleSize, in.MoisturePct,
 		in.DefectCount, trimOptional(in.Inspector), result,
 		status, in.Notes, in.Attachments, attrsOptional(in.Attrs),
 		ev.Verdict, ev.EntriesJSON(), trimOptional(in.OverrideReason), strings.TrimSpace(in.Actor),
 		strings.TrimSpace(in.ChangeReason),
 		trimOptional(in.SupplierRef), trimOptional(in.PORef), trimOptional(in.ReceiptRef),
+		lotSize, level, aql, planInt(plan, true), planInt(plan, false), planNote(plan),
 	)
 	if err != nil {
 		return IncomingInspection{}, err
@@ -260,10 +323,29 @@ func scanIncomingInspection(rows interface{ Scan(...any) error }) (IncomingInspe
 		&item.SampleSize, &item.MoisturePct, &item.DefectCount, &item.Inspector, &item.Result,
 		&item.Status, &item.Notes, &item.Attachments, &attrs,
 		&item.Verdict, &evaluation, &item.OverrideReason, &item.UpdatedBy,
-		&item.CreatedAt, &item.UpdatedAt, &item.SupplierRef, &item.PORef, &item.ReceiptRef); err != nil {
+		&item.CreatedAt, &item.UpdatedAt, &item.SupplierRef, &item.PORef, &item.ReceiptRef,
+		&item.LotSize, &item.InspectionLevel, &item.AQL, &item.AcceptNumber, &item.RejectNumber, &item.SamplingNote); err != nil {
 		return IncomingInspection{}, err
 	}
 	item.Attrs = attrsMap(attrs)
 	item.Evaluation = scanEvaluation(evaluation)
 	return item, nil
+}
+
+func planInt(p *domain.SamplingPlan, accept bool) *int {
+	if p == nil {
+		return nil
+	}
+	v := p.Reject
+	if accept {
+		v = p.Accept
+	}
+	return &v
+}
+
+func planNote(p *domain.SamplingPlan) string {
+	if p == nil {
+		return ""
+	}
+	return p.Note
 }

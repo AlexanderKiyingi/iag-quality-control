@@ -40,11 +40,14 @@ func (h *QC) UpsertIncomingInspection(c *gin.Context) {
 		Attachments *string        `json:"attachments"`
 		Attrs       map[string]any `json:"attrs"`
 		// 016: why the inspector's result disagrees with the verdict.
-		OverrideReason *string `json:"override_reason"`
-		ChangeReason   string  `json:"change_reason"`
-		SupplierRef    *string `json:"supplier_ref"`
-		PORef          *string `json:"po_ref"`
-		ReceiptRef     *string `json:"receipt_ref"`
+		OverrideReason  *string  `json:"override_reason"`
+		ChangeReason    string   `json:"change_reason"`
+		SupplierRef     *string  `json:"supplier_ref"`
+		PORef           *string  `json:"po_ref"`
+		ReceiptRef      *string  `json:"receipt_ref"`
+		LotSize         *int     `json:"lot_size"`
+		InspectionLevel *string  `json:"inspection_level"`
+		AQL             *float64 `json:"aql"`
 	}
 	// Coerced: sample_size, defect_count and moisture arrive as strings from a
 	// web form.
@@ -59,6 +62,7 @@ func (h *QC) UpsertIncomingInspection(c *gin.Context) {
 		Status: body.Status, Notes: body.Notes, Attachments: body.Attachments, Attrs: body.Attrs,
 		OverrideReason: body.OverrideReason, Actor: actorOf(c), ChangeReason: body.ChangeReason,
 		SupplierRef: body.SupplierRef, PORef: body.PORef, ReceiptRef: body.ReceiptRef,
+		LotSize: body.LotSize, InspectionLevel: body.InspectionLevel, AQL: body.AQL,
 	})
 	if errors.Is(err, store.ErrAutoActions) {
 		log.Printf("quality-control: incoming inspection %s: %v", item.BusinessID, err)

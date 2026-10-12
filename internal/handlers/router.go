@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
@@ -19,6 +21,9 @@ import (
 )
 
 type RouterDeps struct {
+	// JobsContext, when set, starts the background reminders (stability pulls)
+	// for the life of that context. Tests leave it nil.
+	JobsContext  context.Context
 	Cfg          config.Config
 	Pool         *pgxpool.Pool
 	Pub          *events.Publisher
@@ -67,6 +72,9 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 	}
 	if deps.PlatformAuth != nil {
 		qc.SignatureVerifier = deps.PlatformAuth
+	}
+	if deps.JobsContext != nil {
+		go qc.stabilityReminderLoop(deps.JobsContext, time.Hour)
 	}
 	admin := &Admin{Cfg: deps.Cfg, Audit: deps.Audit}
 
@@ -219,6 +227,13 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 		v1.DELETE("/lab/methods/:id", middleware.RequirePermission("qc.change_instruments"), qc.deleteFrom("qc_lab_methods"))
 		v1.DELETE("/lab/requests/:id", middleware.RequirePermission("qc.add_sample"), qc.deleteFrom("qc_lab_requests"))
 		v1.DELETE("/stability-studies/:id", middleware.RequirePermission("qc.add_sample"), qc.deleteFrom("qc_stability_studies"))
+		// 024: stability timepoints, results, shelf life; AQL sampling plans.
+		v1.POST("/stability-studies/:id/schedule", middleware.RequirePermission("qc.add_sample"), qc.ScheduleStabilityPulls)
+		v1.GET("/stability-studies/:id/pull-points", middleware.RequirePermission("qc.view_samples"), qc.ListStabilityPulls)
+		v1.POST("/stability-studies/:id/pull-points/:day/results", middleware.RequirePermission("qc.record_tests"), qc.RecordStabilityResults)
+		v1.GET("/stability-studies/:id/shelf-life", middleware.RequirePermission("qc.view_samples"), qc.StabilityShelfLife)
+		v1.GET("/stability-pulls/due", middleware.RequirePermission("qc.view_samples"), qc.DueStabilityPulls)
+		v1.GET("/sampling-plan", middleware.RequirePermission("qc.view_samples"), qc.SamplingPlan)
 		v1.DELETE("/in-process-checks/:id", middleware.RequirePermission("qc.change_compliance"), qc.deleteFrom("qc_in_process_checks"))
 		v1.DELETE("/incoming-inspections/:id", middleware.RequirePermission("qc.change_compliance"), qc.deleteFrom("qc_incoming_inspections"))
 		v1.GET("/incoming-inspections", middleware.RequirePermission("qc.view_compliance"), qc.ListIncomingInspections)
