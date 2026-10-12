@@ -224,6 +224,29 @@ A cupping table is one sitting: several samples, one panel, usually blind.
 
 The blind is procedural, not cryptographic. Anyone who can list cupping sessions can still match a session id to its sample, so a cupper's screen should use only the table routes.
 
+### Green grading (021)
+
+A grading records what a grader counted in a green sample (350 g by default). The service works out the rest.
+
+| Method | Path | Permission | |
+|---|---|---|---|
+| GET | `/api/v1/green-grading-catalog` | `qc.view_lab_summary` | defect types (category, equivalent), screens, grades |
+| GET | `/api/v1/green-gradings?sample_business_id=&batch_business_id=&include_void=` | `qc.view_lab_summary` | |
+| GET | `/api/v1/green-gradings/:id` | `qc.view_lab_summary` | |
+| POST | `/api/v1/green-gradings` | `qc.record_tests` | `{sample_business_id, sample_grams, defects{type: beans}, screens{"18": g, …, "pan": g}, moisture_pct, water_activity, density_g_l, quakers, color, odor, grade_target, stage}` |
+| POST | `/api/v1/green-gradings/:id/void` | `qc.change_sample` | `{reason}`; a grading is voided and redone, never edited |
+
+- **Full defects** follow the SCA Green Arabica Defect Handbook. Each type has an equivalent (5 floaters = 1; 4 floaters = 0). Category 1 and Category 2 are kept apart. The total is normalised to 350 g.
+- **SCA grade:**
+  - `specialty`: no Category 1, ≤ 5 full defects, no quakers.
+  - `premium`: ≤ 8 full defects, ≤ 3 quakers.
+  - `exchange`: 9–23 full defects, ≤ 5 quakers.
+  - `below_standard`: 24–86 full defects.
+  - `off_grade`: more than 86.
+
+  The top three also need moisture of 9–13 %. Anything unmeasured is named in `grade_reasons`, not assumed good.
+- **Metrics:** `full_defects`, `category1_full_defects`, `category2_full_defects`, `quakers`, `moisture`, `water_activity`, `density_g_l` and `screen_<n>_plus_pct` are judged against the active specs (016) for the grading's stage (default `incoming`) and `grade_target`. Export grades are configured as specs, e.g. Screen 18 = `screen_18_plus_pct` LSL 90 for grade target "Screen 18". A failing flag/hold spec raises the NC and the hold. The metrics also appear in SPC. Moisture, water activity and full defects feed the batch rollup.
+
 ### Deleting
 
 `DELETE` exists on exactly five paths, and only while the row is still planning
