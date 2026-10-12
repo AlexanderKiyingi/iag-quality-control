@@ -76,6 +76,13 @@ var signables = map[string]signable{
 		locks:   map[string]bool{"closed": true},
 		guard:   map[string]string{"closed": "t.status <> 'closed'"},
 	},
+	// A SCAR closes only once its effectiveness check found the fix worked.
+	"scars": {
+		table: "qc_scars", key: "business_id",
+		meaning: map[string]string{"closed": "status = 'closed', closed_at = COALESCE(closed_at, NOW())"},
+		locks:   map[string]bool{"closed": true},
+		guard:   map[string]string{"closed": "t.status NOT IN ('closed', 'cancelled') AND t.effective IS TRUE"},
+	},
 	"specifications": {
 		table: "qc_specifications", key: "business_id",
 		meaning: map[string]string{"approved": ""},

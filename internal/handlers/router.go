@@ -83,6 +83,12 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 		v1.GET("/calendar", middleware.RequirePermission("qc.view_calendar"), qc.Calendar)
 		v1.GET("/analytics/spc", middleware.RequirePermission("qc.view_analytics"), qc.SPCAnalytics)
 		v1.GET("/analytics/spc/parameters", middleware.RequirePermission("qc.view_analytics"), qc.SPCParameters)
+		// 023: supplier quality — scorecards from inspections, SCARs.
+		v1.GET("/supplier-scorecards", middleware.RequirePermission("qc.view_compliance"), qc.SupplierScorecards)
+		v1.GET("/scars", middleware.RequirePermission("qc.view_compliance"), qc.ListSCARs)
+		v1.GET("/scars/:id", middleware.RequirePermission("qc.view_compliance"), qc.GetSCAR)
+		v1.POST("/scars", middleware.RequirePermission("qc.change_compliance"), qc.CreateSCAR)
+		v1.PATCH("/scars/:id", middleware.RequirePermission("qc.change_compliance"), qc.UpdateSCAR)
 		// 022: control-chart alarms, per-parameter rules, the quality dashboard.
 		v1.GET("/analytics/quality-dashboard", middleware.RequirePermission("qc.view_reports"), qc.QualityDashboard)
 		v1.GET("/spc-alerts", middleware.RequirePermission("qc.view_analytics"), qc.ListSPCAlerts)

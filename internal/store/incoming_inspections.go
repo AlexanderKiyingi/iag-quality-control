@@ -33,6 +33,11 @@ type IncomingInspection struct {
 	CreatedAt      time.Time         `json:"created_at"`
 	UpdatedAt      time.Time         `json:"updated_at"`
 	AutoActions    *AutoActions      `json:"auto_actions,omitempty"`
+	// Migration 023: who supplied the lot and the documents it came on.
+	// Procurement owns the supplier master; these are its ids.
+	SupplierRef string `json:"supplier_ref"`
+	PORef       string `json:"po_ref"`
+	ReceiptRef  string `json:"receipt_ref"`
 }
 
 // UpsertIncomingInspectionInput is the write shape. SourceLot is required — an
@@ -56,11 +61,15 @@ type UpsertIncomingInspectionInput struct {
 	OverrideReason *string
 	Actor          string
 	ChangeReason   string
+	SupplierRef    *string
+	PORef          *string
+	ReceiptRef     *string
 }
 
 const incomingInspectionCols = `business_id, inspected_at::text, source_lot, item_ref, sample_size,
 	moisture_pct, defect_count, inspector, result, status, notes, attachments, attrs,
-	verdict, evaluation, override_reason, updated_by, created_at, updated_at`
+	verdict, evaluation, override_reason, updated_by, created_at, updated_at,
+	supplier_ref, po_ref, receipt_ref`
 
 func (s *Store) ListIncomingInspections(ctx context.Context, sourceLot, status string, limit int) ([]IncomingInspection, error) {
 	if limit <= 0 || limit > 500 {
@@ -174,13 +183,15 @@ func (s *Store) UpsertIncomingInspection(ctx context.Context, in UpsertIncomingI
 		INSERT INTO qc_incoming_inspections (
 			business_id, inspected_at, source_lot, item_ref, sample_size, moisture_pct,
 			defect_count, inspector, result, status, notes, attachments, attrs,
-			verdict, evaluation, override_reason, updated_by, change_reason, updated_at
+			verdict, evaluation, override_reason, updated_by, change_reason, updated_at,
+			supplier_ref, po_ref, receipt_ref
 		) VALUES (
 			$1, COALESCE(NULLIF($2::text, '')::date, CURRENT_DATE), $3, COALESCE($4::text, ''),
 			COALESCE($5::int, 0), $6, COALESCE($7::int, 0), COALESCE($8::text, ''),
 			COALESCE($9::text, ''), COALESCE($10::text, 'open'), COALESCE($11::text, ''),
 			COALESCE($12::text, ''), COALESCE($13::jsonb, '{}'::jsonb),
-			$14, $15::jsonb, COALESCE($16::text, ''), $17, $18, NOW()
+			$14, $15::jsonb, COALESCE($16::text, ''), $17, $18, NOW(),
+			COALESCE($19::text, ''), COALESCE($20::text, ''), COALESCE($21::text, '')
 		)
 		ON CONFLICT (business_id) DO UPDATE SET
 			inspected_at = CASE WHEN $2::text IS NULL THEN qc_incoming_inspections.inspected_at
@@ -203,6 +214,9 @@ func (s *Store) UpsertIncomingInspection(ctx context.Context, in UpsertIncomingI
 			override_reason = COALESCE($16::text, qc_incoming_inspections.override_reason),
 			updated_by = EXCLUDED.updated_by,
 			change_reason = EXCLUDED.change_reason,
+			supplier_ref = COALESCE($19::text, qc_incoming_inspections.supplier_ref),
+			po_ref = COALESCE($20::text, qc_incoming_inspections.po_ref),
+			receipt_ref = COALESCE($21::text, qc_incoming_inspections.receipt_ref),
 			updated_at = NOW()
 		RETURNING `+incomingInspectionCols,
 		id, in.InspectedAt, sourceLot, trimOptional(in.ItemRef), in.SampleSize, in.MoisturePct,
@@ -210,6 +224,7 @@ func (s *Store) UpsertIncomingInspection(ctx context.Context, in UpsertIncomingI
 		status, in.Notes, in.Attachments, attrsOptional(in.Attrs),
 		ev.Verdict, ev.EntriesJSON(), trimOptional(in.OverrideReason), strings.TrimSpace(in.Actor),
 		strings.TrimSpace(in.ChangeReason),
+		trimOptional(in.SupplierRef), trimOptional(in.PORef), trimOptional(in.ReceiptRef),
 	)
 	if err != nil {
 		return IncomingInspection{}, err
@@ -245,7 +260,7 @@ func scanIncomingInspection(rows interface{ Scan(...any) error }) (IncomingInspe
 		&item.SampleSize, &item.MoisturePct, &item.DefectCount, &item.Inspector, &item.Result,
 		&item.Status, &item.Notes, &item.Attachments, &attrs,
 		&item.Verdict, &evaluation, &item.OverrideReason, &item.UpdatedBy,
-		&item.CreatedAt, &item.UpdatedAt); err != nil {
+		&item.CreatedAt, &item.UpdatedAt, &item.SupplierRef, &item.PORef, &item.ReceiptRef); err != nil {
 		return IncomingInspection{}, err
 	}
 	item.Attrs = attrsMap(attrs)
