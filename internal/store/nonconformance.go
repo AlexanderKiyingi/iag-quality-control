@@ -43,8 +43,9 @@ type UpsertNonConformanceInput struct {
 	Description *string
 	RootCause   *string
 	Attachments *string
-	Attrs       map[string]any
-	Actor       string
+	Attrs        map[string]any
+	Actor        string
+	ChangeReason string
 }
 
 const nonConformanceCols = `business_id, raised_date::text, source_ref, title, severity, owner,
@@ -97,6 +98,9 @@ func (s *Store) UpsertNonConformance(ctx context.Context, in UpsertNonConformanc
 		return NonConformance{}, ErrBadInput
 	}
 	id := strings.TrimSpace(in.BusinessID)
+	if err := s.guardWrite(ctx, "non-conformances", "qc_non_conformances", "business_id", id, in.ChangeReason); err != nil {
+		return NonConformance{}, err
+	}
 	if id == "" {
 		var err error
 		if id, err = nextBusinessID(ctx, s.pool, "qc_non_conformances", "NCR"); err != nil {
@@ -106,12 +110,12 @@ func (s *Store) UpsertNonConformance(ctx context.Context, in UpsertNonConformanc
 	rows, err := s.pool.Query(ctx, `
 		INSERT INTO qc_non_conformances (
 			business_id, raised_date, source_ref, title, severity, owner,
-			status, description, root_cause, attachments, attrs, updated_by, updated_at
+			status, description, root_cause, attachments, attrs, updated_by, change_reason, updated_at
 		) VALUES (
 			$1, COALESCE(NULLIF($2::text, '')::date, CURRENT_DATE), COALESCE($3::text, ''), $4,
 			COALESCE($5::text, 'minor'), COALESCE($6::text, ''), COALESCE($7::text, 'open'),
 			COALESCE($8::text, ''), COALESCE($9::text, ''), COALESCE($10::text, ''),
-			COALESCE($11::jsonb, '{}'::jsonb), $12, NOW()
+			COALESCE($11::jsonb, '{}'::jsonb), $12, $13, NOW()
 		)
 		ON CONFLICT (business_id) DO UPDATE SET
 			raised_date = CASE WHEN $2::text IS NULL THEN qc_non_conformances.raised_date
@@ -128,11 +132,12 @@ func (s *Store) UpsertNonConformance(ctx context.Context, in UpsertNonConformanc
 			attrs = CASE WHEN $11::jsonb IS NULL THEN qc_non_conformances.attrs
 			             ELSE qc_non_conformances.attrs || $11::jsonb END,
 			updated_by = EXCLUDED.updated_by,
+			change_reason = EXCLUDED.change_reason,
 			updated_at = NOW()
 		RETURNING `+nonConformanceCols,
 		id, in.RaisedDate, trimOptional(in.SourceRef), title, blankToNil(in.Severity),
 		trimOptional(in.Owner), blankToNil(in.Status), in.Description, in.RootCause,
-		in.Attachments, attrsOptional(in.Attrs), strings.TrimSpace(in.Actor),
+		in.Attachments, attrsOptional(in.Attrs), strings.TrimSpace(in.Actor), strings.TrimSpace(in.ChangeReason),
 	)
 	if err != nil {
 		return NonConformance{}, err

@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"errors"
+	"log"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -128,9 +130,20 @@ func (h *QC) PostCoA(c *gin.Context) {
 		BatchBusinessID string `json:"batch_business_id"`
 		CoaNumber       string `json:"coa_number" binding:"required"`
 		DocumentRef     string `json:"document_ref"`
+		Reason          string `json:"reason"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	// Issuing a certificate is a signed act (019): the issuer re-enters their
+	// password, and the CoA PDF prints the signature.
+	signer, err := h.signerFrom(c)
+	if respondSignatureErr(c, err) {
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not check the signature"})
 		return
 	}
 	if err := h.validateExportLot(c.Request.Context(), body.LotBusinessID); err != nil {
@@ -148,7 +161,7 @@ func (h *QC) PostCoA(c *gin.Context) {
 		// The verified token's identity (actorOf), not ActorLabel: that reads
 		// an X-User-Email header any caller can set, and without one it records
 		// "authenticated" — a certificate signed by nobody in particular.
-		IssuedBy: actorOf(c),
+		IssuedBy: signer.Email,
 	})
 	if respondStoreErr(c, err) {
 		return
@@ -156,6 +169,15 @@ func (h *QC) PostCoA(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not issue coa"})
 		return
+	}
+	reason := strings.TrimSpace(body.Reason)
+	if reason == "" {
+		reason = "Certificate of analysis issued"
+	}
+	if _, err := h.Store.SignRecord(c.Request.Context(), store.SignInput{
+		Entity: "coa", BusinessID: coa.CoaNumber, Meaning: "issued", Reason: reason, Signer: signer,
+	}); err != nil {
+		log.Printf("quality-control: CoA %s issued but not signed: %v", coa.CoaNumber, err)
 	}
 	data := map[string]any{
 		"lot_business_id": coa.LotBusinessID,

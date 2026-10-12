@@ -49,11 +49,16 @@ func (h *QC) UpsertNonConformance(c *gin.Context) {
 		Status      *string        `json:"status"`
 		Description *string        `json:"description"`
 		RootCause   *string        `json:"root_cause"`
-		Attachments *string        `json:"attachments"`
-		Attrs       map[string]any `json:"attrs"`
+		Attachments  *string        `json:"attachments"`
+		Attrs        map[string]any `json:"attrs"`
+		ChangeReason string         `json:"change_reason"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if statusIs(body.Status, "closed") {
+		respondSignatureRequired(c, "Closing a non-conformance is a signed act: use Sign → Close.")
 		return
 	}
 	item, err := h.Store.UpsertNonConformance(c.Request.Context(), store.UpsertNonConformanceInput{
@@ -61,6 +66,7 @@ func (h *QC) UpsertNonConformance(c *gin.Context) {
 		SourceRef: body.SourceRef, Severity: body.Severity, Owner: body.Owner,
 		Status: body.Status, Description: body.Description, RootCause: body.RootCause,
 		Attachments: body.Attachments, Attrs: body.Attrs, Actor: actorOf(c),
+		ChangeReason: body.ChangeReason,
 	})
 	if respondStoreErr(c, err) {
 		return
@@ -98,6 +104,7 @@ func (h *QC) UpsertInProcessCheck(c *gin.Context) {
 		Attrs      map[string]any `json:"attrs"`
 		// 016: why the checker's result disagrees with the verdict.
 		OverrideReason *string `json:"override_reason"`
+		ChangeReason   string  `json:"change_reason"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -108,6 +115,7 @@ func (h *QC) UpsertInProcessCheck(c *gin.Context) {
 		Stage: body.Stage, BatchRef: body.BatchRef, Target: body.Target, Actual: body.Actual,
 		CheckedBy: body.CheckedBy, Result: body.Result, Status: body.Status,
 		Notes: body.Notes, Attrs: body.Attrs, OverrideReason: body.OverrideReason, Actor: actorOf(c),
+		ChangeReason: body.ChangeReason,
 	})
 	if errors.Is(err, store.ErrAutoActions) {
 		log.Printf("quality-control: in-process check %s: %v", item.BusinessID, err)
@@ -168,9 +176,14 @@ func (h *QC) UpsertReleaseDecision(c *gin.Context) {
 		Notes        *string        `json:"notes"`
 		Attachments  *string        `json:"attachments"`
 		Attrs        map[string]any `json:"attrs"`
+		ChangeReason string         `json:"change_reason"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if statusIs(body.Status, "approved") {
+		respondSignatureRequired(c, "Approving a release decision is a signed act: use Sign → Approve.")
 		return
 	}
 	item, emit, err := h.Store.UpsertReleaseDecision(c.Request.Context(), store.UpsertReleaseDecisionInput{
@@ -178,6 +191,7 @@ func (h *QC) UpsertReleaseDecision(c *gin.Context) {
 		Product: body.Product, CheckRefs: body.CheckRefs, DecidedBy: body.DecidedBy,
 		Decision: body.Decision, Status: body.Status, Notes: body.Notes,
 		Attachments: body.Attachments, Attrs: body.Attrs, Actor: actorOf(c),
+		ChangeReason: body.ChangeReason,
 	})
 	if respondStoreErr(c, err) {
 		return
@@ -187,6 +201,13 @@ func (h *QC) UpsertReleaseDecision(c *gin.Context) {
 		return
 	}
 	resp := gin.H{"release": item}
+	// A hold, reject or rework takes effect the moment it is recorded — the
+	// fail-safe direction. A release does not: it is announced only when a
+	// person signs it (SignRecord), so an unsigned "released" moves no stock.
+	if eventType := store.ReleaseEventType(item.Decision); eventType == "qc.batch.released" {
+		resp["awaiting_signature"] = true
+		emit = false
+	}
 	if emit {
 		if eventType := store.ReleaseEventType(item.Decision); eventType != "" {
 			data := map[string]any{

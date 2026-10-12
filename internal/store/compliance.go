@@ -71,6 +71,7 @@ type UpsertCAPAInput struct {
 	Attachments      *string
 	Attrs            map[string]any
 	Actor            string
+	ChangeReason     string
 }
 
 func (s *Store) ListComplianceLogs(ctx context.Context, limit int) ([]ComplianceLog, error) {
@@ -193,6 +194,9 @@ func (s *Store) UpsertCAPA(ctx context.Context, in UpsertCAPAInput) (CAPA, error
 		return CAPA{}, ErrBadInput
 	}
 	id := strings.TrimSpace(in.BusinessID)
+	if err := s.guardWrite(ctx, "capas", "qc_capas", "business_id", id, in.ChangeReason); err != nil {
+		return CAPA{}, err
+	}
 	if id == "" {
 		var err error
 		id, err = nextBusinessID(ctx, s.pool, "qc_capas", "CAPA")
@@ -207,14 +211,14 @@ func (s *Store) UpsertCAPA(ctx context.Context, in UpsertCAPAInput) (CAPA, error
 		INSERT INTO qc_capas (
 			business_id, title, source_ref, status, priority, owner,
 			root_cause, corrective_action, opened_at, closed_at,
-			due_date, capa_kind, effectiveness, attachments, attrs, updated_by
+			due_date, capa_kind, effectiveness, attachments, attrs, updated_by, change_reason
 		) VALUES (
 			$1, $2,
 			COALESCE($3::text, ''), COALESCE($4::text, 'open'), COALESCE($5::text, ''),
 			COALESCE($6::text, ''), COALESCE($7::text, ''), COALESCE($8::text, ''),
 			COALESCE(NULLIF($9::text, '')::date, CURRENT_DATE), NULLIF($10::text, '')::date,
 			NULLIF($11::text, '')::date, COALESCE($12::text, ''), COALESCE($13::text, ''),
-			COALESCE($14::text, ''), COALESCE($15::jsonb, '{}'::jsonb), $16
+			COALESCE($14::text, ''), COALESCE($15::jsonb, '{}'::jsonb), $16, $17
 		)
 		ON CONFLICT (business_id) DO UPDATE SET
 			title = EXCLUDED.title,
@@ -238,12 +242,14 @@ func (s *Store) UpsertCAPA(ctx context.Context, in UpsertCAPAInput) (CAPA, error
 			attachments = COALESCE($14::text, qc_capas.attachments),
 			attrs = CASE WHEN $15::jsonb IS NULL THEN qc_capas.attrs
 			             ELSE qc_capas.attrs || $15::jsonb END,
-			updated_by = EXCLUDED.updated_by
+			updated_by = EXCLUDED.updated_by,
+			change_reason = EXCLUDED.change_reason
 		RETURNING `+capaCols,
 		id, title, trimOptional(in.SourceRef), blankToNil(in.Status), trimOptional(in.Priority),
 		trimOptional(in.Owner), trimOptional(in.RootCause), trimOptional(in.CorrectiveAction),
 		openedAt, in.ClosedAt, in.DueDate, trimOptional(in.CAPAKind),
 		in.Effectiveness, in.Attachments, attrsOptional(in.Attrs), strings.TrimSpace(in.Actor),
+		strings.TrimSpace(in.ChangeReason),
 	)
 	if err != nil {
 		return CAPA{}, err

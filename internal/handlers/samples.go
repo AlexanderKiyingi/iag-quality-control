@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -45,14 +46,21 @@ func (h *QC) PatchSample(c *gin.Context) {
 		AssignedTech *string        `json:"assigned_tech"`
 		Notes        *string        `json:"notes"`
 		Attrs        map[string]any `json:"attrs"`
+		ChangeReason string         `json:"change_reason"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	// A PATCH is always a change to an existing sample, so it always says why.
+	if strings.TrimSpace(body.ChangeReason) == "" {
+		respondStoreErr(c, store.ErrReasonRequired)
+		return
+	}
 	sample, err := h.Store.UpdateSample(c.Request.Context(), c.Param("id"), store.SamplePatch{
 		Status: body.Status, SampleType: body.SampleType, Priority: body.Priority,
 		AssignedTech: body.AssignedTech, Notes: body.Notes, Attrs: body.Attrs,
+		ChangeReason: body.ChangeReason,
 	})
 	if respondStoreErr(c, err) {
 		return

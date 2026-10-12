@@ -65,6 +65,9 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 		SCM:    deps.SCM,
 		MES:    deps.MES,
 	}
+	if deps.PlatformAuth != nil {
+		qc.SignatureVerifier = deps.PlatformAuth
+	}
 	admin := &Admin{Cfg: deps.Cfg, Audit: deps.Audit}
 
 	v1 := r.Group("/api/v1")
@@ -210,6 +213,10 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 		// Before/after history of the quality record (017). Read-only: the log
 		// is append-only in the database itself.
 		v1.GET("/change-log", middleware.RequirePermission("qc.view_change_log"), qc.ListChangeLog)
+		// Electronic signatures (019). POST checks the register's own
+		// permission in the handler; the signature token is the second factor.
+		v1.GET("/signatures", middleware.RequirePermission("qc.view_change_log"), qc.ListSignatures)
+		v1.POST("/signatures", qc.SignRecord)
 		v1.GET("/instruments", middleware.RequirePermission("qc.view_instruments"), qc.ListInstruments)
 		v1.POST("/instruments", middleware.RequirePermission("qc.change_instruments"), qc.UpsertInstrument)
 		v1.POST("/instruments/sync", middleware.RequirePermission("qc.sync_instruments"), qc.SyncInstruments)

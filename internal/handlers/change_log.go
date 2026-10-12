@@ -11,7 +11,8 @@ import (
 // GET /change-log?entity=incoming-inspections&id=IIN-26-0004.
 func (h *QC) ListChangeLog(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "100"))
-	items, err := h.Store.ListChangeLog(c.Request.Context(), c.Query("entity"), c.Query("id"), c.Query("actor"), limit)
+	items, err := h.Store.ListChangeLogBetween(c.Request.Context(), c.Query("entity"), c.Query("id"),
+		c.Query("actor"), c.Query("from"), c.Query("to"), limit)
 	if respondStoreErr(c, err) {
 		return
 	}

@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -55,6 +56,7 @@ func (h *QC) UpsertSpecification(c *gin.Context) {
 		Active       *bool          `json:"active"`
 		Notes        *string        `json:"notes"`
 		Attrs        map[string]any `json:"attrs"`
+		ChangeReason string         `json:"change_reason"`
 	}
 	// Coerced: limits arrive as numbers from an API client and as strings from
 	// a web form; the store wants strings so "" can mean "clear this limit".
@@ -62,11 +64,31 @@ func (h *QC) UpsertSpecification(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	// A specification decides what is automatically held and raised as an NC,
+	// so every version of it is approved by a signature (019). The token is
+	// checked before the spec changes; the signature attests the saved row.
+	signer, err := h.signerFrom(c)
+	if respondSignatureErr(c, err) {
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not check the signature"})
+		return
+	}
+	reason := strings.TrimSpace(body.ChangeReason)
+	if reason == "" {
+		if strings.TrimSpace(body.BusinessID) == "" {
+			reason = "New specification"
+		} else {
+			respondStoreErr(c, store.ErrReasonRequired)
+			return
+		}
+	}
 	item, err := h.Store.UpsertSpecification(c.Request.Context(), store.UpsertSpecificationInput{
 		BusinessID: body.BusinessID, Parameter: body.Parameter, Stage: body.Stage, Grade: body.Grade,
 		Label: body.Label, Unit: body.Unit, LSL: body.LSL, USL: body.USL, Target: body.Target,
 		ActionOnFail: body.ActionOnFail, Active: body.Active, Notes: body.Notes, Attrs: body.Attrs,
-		Actor: actorOf(c),
+		Actor: signer.Email, ChangeReason: reason,
 	})
 	if respondStoreErr(c, err) {
 		return
@@ -75,7 +97,17 @@ func (h *QC) UpsertSpecification(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not save specification"})
 		return
 	}
-	c.JSON(http.StatusOK, item)
+	sig, err := h.Store.SignRecord(c.Request.Context(), store.SignInput{
+		Entity: "specifications", BusinessID: item.BusinessID, Meaning: "approved", Reason: reason, Signer: signer,
+	})
+	if err != nil {
+		// The spec is saved; its signature is not. Say so rather than pass it
+		// off as signed — a re-save with a fresh signature completes it.
+		log.Printf("quality-control: spec %s saved but not signed: %v", item.BusinessID, err)
+		c.JSON(http.StatusOK, gin.H{"specification": item, "signature_error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"specification": item, "signature": sig})
 }
 
 /*

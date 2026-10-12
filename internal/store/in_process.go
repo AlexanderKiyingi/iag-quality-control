@@ -53,6 +53,7 @@ type UpsertInProcessCheckInput struct {
 	// OverrideReason follows optional.go; Actor is who is saving.
 	OverrideReason *string
 	Actor          string
+	ChangeReason   string
 }
 
 const inProcessCols = `business_id, check_date::text, stage, batch_ref, parameter, target, actual,
@@ -118,8 +119,14 @@ func (s *Store) UpsertInProcessCheck(ctx context.Context, in UpsertInProcessChec
 		if id, err = nextBusinessID(ctx, s.pool, "qc_in_process_checks", "IPC"); err != nil {
 			return InProcessCheck{}, err
 		}
-	} else if prev, _, err = s.getInProcessCheck(ctx, id); err != nil {
-		return InProcessCheck{}, err
+	} else {
+		var exists bool
+		if prev, exists, err = s.getInProcessCheck(ctx, id); err != nil {
+			return InProcessCheck{}, err
+		}
+		if exists && strings.TrimSpace(in.ChangeReason) == "" {
+			return InProcessCheck{}, ErrReasonRequired
+		}
 	}
 
 	actual := prev.Actual
@@ -154,13 +161,13 @@ func (s *Store) UpsertInProcessCheck(ctx context.Context, in UpsertInProcessChec
 		INSERT INTO qc_in_process_checks (
 			business_id, check_date, stage, batch_ref, parameter, target, actual,
 			checked_by, result, status, notes, attrs,
-			verdict, evaluation, override_reason, updated_by, updated_at
+			verdict, evaluation, override_reason, updated_by, change_reason, updated_at
 		) VALUES (
 			$1, COALESCE(NULLIF($2::text, '')::date, CURRENT_DATE), COALESCE($3::text, ''),
 			COALESCE($4::text, ''), $5, COALESCE($6::text, ''), COALESCE($7::text, ''),
 			COALESCE($8::text, ''), COALESCE($9::text, ''), COALESCE($10::text, 'open'),
 			COALESCE($11::text, ''), COALESCE($12::jsonb, '{}'::jsonb),
-			$13, $14::jsonb, COALESCE($15::text, ''), $16, NOW()
+			$13, $14::jsonb, COALESCE($15::text, ''), $16, $17, NOW()
 		)
 		ON CONFLICT (business_id) DO UPDATE SET
 			check_date = CASE WHEN $2::text IS NULL THEN qc_in_process_checks.check_date
@@ -181,12 +188,14 @@ func (s *Store) UpsertInProcessCheck(ctx context.Context, in UpsertInProcessChec
 			evaluation = EXCLUDED.evaluation,
 			override_reason = COALESCE($15::text, qc_in_process_checks.override_reason),
 			updated_by = EXCLUDED.updated_by,
+			change_reason = EXCLUDED.change_reason,
 			updated_at = NOW()
 		RETURNING `+inProcessCols,
 		id, in.CheckDate, trimOptional(in.Stage), trimOptional(in.BatchRef), parameter,
 		in.Target, in.Actual, trimOptional(in.CheckedBy), result,
 		blankToNil(in.Status), in.Notes, attrsOptional(in.Attrs),
 		ev.Verdict, ev.EntriesJSON(), trimOptional(in.OverrideReason), strings.TrimSpace(in.Actor),
+		strings.TrimSpace(in.ChangeReason),
 	)
 	if err != nil {
 		return InProcessCheck{}, err

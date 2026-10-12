@@ -174,6 +174,35 @@ lists sheets with each one's deviation and outlier flag.
 parameter and takes its limits from the spec unless `usl`/`lsl` are passed;
 `GET /api/v1/analytics/spc/parameters` lists what has data.
 
+### Electronic signatures and reasons for change (019)
+
+21 CFR Part 11 / EU Annex 11. A signature needs two credentials: the session,
+and a **signature token** from iag-authentication's
+`POST /v1/users/me/signature-token {password, audience: "iag.quality"}`, sent
+as `X-Signature-Token`. The token is only issued after the person re-enters
+their password, lives five minutes, must belong to the caller, and signs one
+thing (its `jti` is unique in `qc_signatures`).
+
+| Method | Path | What it signs |
+|--------|------|---------------|
+| POST | `/api/v1/signatures` `{entity, business_id, meaning, reason}` | `release-decisions` → `approved` (announces `qc.batch.released`), `non-conformances` / `capas` → `closed` |
+| GET | `/api/v1/signatures?entity=&id=` | Lists signatures, each with `record_unchanged` (does the record still match its SHA-256?) |
+| POST | `/api/v1/specifications` | Every spec save is an `approved` signature |
+| POST | `/api/v1/coa` | Issuing a CoA is an `issued` signature; the PDF prints it |
+| POST | `/api/v1/certification/requests/{id}/approve` | Each stage is an `approved` / `rejected` signature |
+
+A record signed `approved` (release) or `closed` (NC, CAPA) is **locked**:
+further writes are 409 `record_locked`. Closing an NC/CAPA or approving a
+release through a plain save is 403 `signature_required`. A Released or
+Conditional decision is announced only when signed; a hold takes effect when
+saved. Signatures are append-only in the database.
+
+Every change to an existing quality record (specs, samples, incoming
+inspections, in-process checks, NCs, CAPAs, release decisions) carries
+`change_reason`; without one it is 422 `reason_required`. The change log
+stores it beside the before→after diff, and `GET /change-log` takes
+`from` / `to` (YYYY-MM-DD) for reviewing a period.
+
 ### Deleting
 
 `DELETE` exists on exactly five paths, and only while the row is still planning

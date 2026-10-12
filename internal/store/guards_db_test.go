@@ -96,13 +96,13 @@ func TestUpsertGuardsAgainstRealPostgres(t *testing.T) {
 
 	t.Run("CAPA is not reopened by a partial save", func(t *testing.T) {
 		capa := id("CAPA")
-		if _, err := s.UpsertCAPA(ctx, UpsertCAPAInput{
+		if _, err := s.UpsertCAPA(ctx, UpsertCAPAInput{ChangeReason: "test edit",
 			BusinessID: capa, Title: "Retrain intake", Status: ptr("closed"),
 			RootCause: ptr("missed step"), OpenedAt: ptr("2026-05-01"),
 		}); err != nil {
 			t.Fatalf("create: %v", err)
 		}
-		got, err := s.UpsertCAPA(ctx, UpsertCAPAInput{
+		got, err := s.UpsertCAPA(ctx, UpsertCAPAInput{ChangeReason: "test edit",
 			BusinessID: capa, Title: "Retrain intake", Owner: ptr("B. Owner"),
 		})
 		if err != nil {
@@ -223,7 +223,7 @@ func TestUpsertGuardsAgainstRealPostgres(t *testing.T) {
 
 	t.Run("release decision announces once, not on every edit", func(t *testing.T) {
 		rel := id("REL")
-		_, emit, err := s.UpsertReleaseDecision(ctx, UpsertReleaseDecisionInput{
+		_, emit, err := s.UpsertReleaseDecision(ctx, UpsertReleaseDecisionInput{ChangeReason: "test edit",
 			BusinessID: rel, BatchRef: "BATCH-1", Product: ptr("Arabica AA"),
 			Decision: ptr("Released"), DecidedBy: ptr("QA lead"),
 		})
@@ -236,7 +236,7 @@ func TestUpsertGuardsAgainstRealPostgres(t *testing.T) {
 
 		// Editing anything else must NOT re-announce: warehouse and traceability
 		// act on these events, and a batch is released once.
-		got, emit, err := s.UpsertReleaseDecision(ctx, UpsertReleaseDecisionInput{
+		got, emit, err := s.UpsertReleaseDecision(ctx, UpsertReleaseDecisionInput{ChangeReason: "test edit",
 			BusinessID: rel, BatchRef: "BATCH-1", Notes: ptr("typo fixed"),
 		})
 		if err != nil {
@@ -253,7 +253,7 @@ func TestUpsertGuardsAgainstRealPostgres(t *testing.T) {
 		}
 
 		// Changing the decision must announce again, with the other event type.
-		changed, emit, err := s.UpsertReleaseDecision(ctx, UpsertReleaseDecisionInput{
+		changed, emit, err := s.UpsertReleaseDecision(ctx, UpsertReleaseDecisionInput{ChangeReason: "test edit",
 			BusinessID: rel, BatchRef: "BATCH-1", Decision: ptr("Hold"),
 		})
 		if err != nil {
@@ -284,14 +284,14 @@ func TestUpsertGuardsAgainstRealPostgres(t *testing.T) {
 
 	t.Run("non-conformance keeps the columns a partial save omitted", func(t *testing.T) {
 		ncr := id("NCR")
-		if _, err := s.UpsertNonConformance(ctx, UpsertNonConformanceInput{
+		if _, err := s.UpsertNonConformance(ctx, UpsertNonConformanceInput{ChangeReason: "test edit",
 			BusinessID: ncr, Title: "Foreign matter", Severity: ptr("major"),
 			Owner: ptr("A. Owner"), Description: ptr("found in sample"), RootCause: ptr("screen torn"),
 			Status: ptr("under_investigation"),
 		}); err != nil {
 			t.Fatalf("create: %v", err)
 		}
-		got, err := s.UpsertNonConformance(ctx, UpsertNonConformanceInput{
+		got, err := s.UpsertNonConformance(ctx, UpsertNonConformanceInput{ChangeReason: "test edit",
 			BusinessID: ncr, Title: "Foreign matter (confirmed)",
 		})
 		if err != nil {
@@ -305,7 +305,7 @@ func TestUpsertGuardsAgainstRealPostgres(t *testing.T) {
 
 	t.Run("CAPA carries the four fields the form used to drop", func(t *testing.T) {
 		capa := id("CAPAX")
-		got, err := s.UpsertCAPA(ctx, UpsertCAPAInput{
+		got, err := s.UpsertCAPA(ctx, UpsertCAPAInput{ChangeReason: "test edit",
 			BusinessID: capa, Title: "Replace screen", DueDate: ptr("2026-11-30"),
 			CAPAKind: ptr("Corrective"), Effectiveness: ptr("re-inspect after 30 days"),
 			Attachments: ptr("[]"),
@@ -469,7 +469,7 @@ func TestUpsertGuardsAgainstRealPostgres(t *testing.T) {
 		moisture := 11.8
 		size := 300
 		defects := 4
-		created, err := s.UpsertIncomingInspection(ctx, UpsertIncomingInspectionInput{
+		created, err := s.UpsertIncomingInspection(ctx, UpsertIncomingInspectionInput{ChangeReason: "test edit",
 			BusinessID: iin, SourceLot: "LOT-" + run, ItemRef: ptr("Arabica AA"),
 			SampleSize: &size, MoisturePct: &moisture, DefectCount: &defects,
 			Inspector: ptr("A. Inspector"), Result: ptr("accept"), Status: ptr("released"),
@@ -481,7 +481,7 @@ func TestUpsertGuardsAgainstRealPostgres(t *testing.T) {
 			t.Errorf("readings not stored: moisture=%v size=%d", created.MoisturePct, created.SampleSize)
 		}
 		// Partial save preserves, like every other register.
-		got, err := s.UpsertIncomingInspection(ctx, UpsertIncomingInspectionInput{
+		got, err := s.UpsertIncomingInspection(ctx, UpsertIncomingInspectionInput{ChangeReason: "test edit",
 			BusinessID: iin, SourceLot: "LOT-" + run, Notes: ptr("re-checked"),
 		})
 		if err != nil {
