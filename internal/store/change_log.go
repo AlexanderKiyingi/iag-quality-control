@@ -38,6 +38,7 @@ var changeLogEntities = map[string]string{
 	"green-gradings":       "qc_green_gradings",
 	"spc-settings":         "qc_spc_settings",
 	"scars":                "qc_scars",
+	"stability-results":    "qc_stability_results",
 	"measurements":         "qc_lab_measurements",
 	"incoming-inspections": "qc_incoming_inspections",
 	"in-process-checks":    "qc_in_process_checks",

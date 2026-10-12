@@ -110,6 +110,7 @@ func main() {
 		MES:          mes,
 		PlatformAuth: platformAuth,
 		StrictRBAC:   cfg.StrictRBAC(),
+		JobsContext:  ctx,
 	})
 
 	srv := &http.Server{Addr: ":" + cfg.Port, Handler: router, ReadHeaderTimeout: 10 * time.Second}
