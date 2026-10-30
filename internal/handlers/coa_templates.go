@@ -165,6 +165,14 @@ func (h *QC) UpdateAlertRoute(c *gin.Context) {
 		return
 	}
 	body.Kind = c.Param("kind")
+	// QC's alert templates exist on email, plus the generic in-app template;
+	// a route on any other channel failed every alert it carried.
+	switch strings.TrimSpace(body.Channel) {
+	case "", "email", "in_app":
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "channel must be email or in_app"})
+		return
+	}
 	item, err := h.Store.UpdateAlertRoute(c.Request.Context(), body, actorOf(c))
 	if respondStoreErr(c, err) {
 		return

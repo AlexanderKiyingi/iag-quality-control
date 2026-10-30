@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -75,7 +76,17 @@ func (h *QC) notifyAlert(ctx context.Context, kind, templateID, title, body stri
 			}
 		}
 	}
-	if channel == "" {
+	// A template exists on one channel only, and QC's (qc.alert, approval.*)
+	// are email. In-app uses the generic in-app template; any other channel
+	// (an old route, or NOTIFY_CHANNEL) falls back to email rather than
+	// failing at the notifications service.
+	switch channel {
+	case "in_app":
+		templateID = "alert-in-app"
+	case "", "email":
+		channel = "email"
+	default:
+		slog.WarnContext(ctx, "qc alert channel has no template; sending by email", "kind", kind, "channel", channel)
 		channel = "email"
 	}
 	_ = h.publish(ctx, "qc.alert.raised", map[string]any{
@@ -84,7 +95,7 @@ func (h *QC) notifyAlert(ctx context.Context, kind, templateID, title, body stri
 		"audience":   audience,
 		"kind":       kind,
 		"templateId": templateID,
-		"variables":  map[string]any{"Title": title, "Body": body},
+		"variables":  map[string]any{"Title": title, "Body": body, "Message": body},
 	})
 }
 
